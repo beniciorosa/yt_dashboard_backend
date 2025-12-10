@@ -392,4 +392,4 @@ export class ActiveCampaignService {
                     }
                 }
             }
-}
+        }
