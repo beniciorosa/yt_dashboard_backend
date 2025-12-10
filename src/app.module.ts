@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { CompetitorsModule } from './competitors/competitors.module';
 import { OpenaiModule } from './openai/openai.module';
 import { YoutubeModule } from './youtube/youtube.module';
+import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { YoutubeModule } from './youtube/youtube.module';
     CompetitorsModule,
     OpenaiModule,
     YoutubeModule,
+    ActiveCampaignModule,
   ],
   controllers: [AppController],
   providers: [AppService],
