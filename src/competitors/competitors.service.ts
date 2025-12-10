@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
@@ -6,15 +7,20 @@ export class CompetitorsService {
     private readonly logger = new Logger(CompetitorsService.name);
     private supabase: SupabaseClient;
 
-    // Hardcoded keys as per migration plan (from frontend)
-    private readonly YOUTUBE_API_KEY = 'AIzaSyBYsoVEnQ9vwQUF4Y0Tf2yCyrx678CKbMo';
-    private readonly SUPABASE_URL = 'https://qytuhvqggsleohxndtqz.supabase.co';
-    private readonly SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5dHVodnFnZ3NsZW9oeG5kdHF6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzcwODIxNSwiZXhwIjoyMDc5Mjg0MjE1fQ.5liB1hAHSCezVFRQvlIL7rnPfMrVQKv17dte09bXzb4';
-
+    private readonly YOUTUBE_API_KEY: string;
     private readonly BASE_URL = 'https://www.googleapis.com/youtube/v3';
 
-    constructor() {
-        this.supabase = createClient(this.SUPABASE_URL, this.SUPABASE_KEY, {
+    constructor(private configService: ConfigService) {
+        const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+        const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
+        this.YOUTUBE_API_KEY = this.configService.get<string>('YOUTUBE_API_KEY') || '';
+
+        if (!supabaseUrl || !supabaseKey) {
+            this.logger.error('Supabase credentials not found in environment variables');
+            throw new Error('Supabase credentials missing');
+        }
+
+        this.supabase = createClient(supabaseUrl, supabaseKey, {
             auth: {
                 persistSession: false,
                 autoRefreshToken: false,
@@ -34,36 +40,37 @@ export class CompetitorsService {
         let processed = 0;
         const errors: string[] = [];
 
-        for (const comp of competitors) {
-            try {
-                // Logic from frontend: handleUpdateAll
-                let lookupInput = comp.channelUrl;
+        // Process in chunks to avoid timeouts but speed up execution
+        const CHUNK_SIZE = 5;
+        for (let i = 0; i < competitors.length; i += CHUNK_SIZE) {
+            const chunk = competitors.slice(i, i + CHUNK_SIZE);
+            await Promise.all(chunk.map(async (comp) => {
+                try {
+                    let lookupInput = comp.channelUrl;
 
-                // If ID is not a standard YouTube ID (starts with UC), it might be a generated UUID.
-                // In that case, try to use influencerName or channelName for lookup.
-                if (!comp.id.startsWith('UC')) {
-                    if (comp.influencerName && comp.influencerName.length > 2 && !comp.influencerName.includes(' ')) {
-                        lookupInput = comp.influencerName;
-                    } else {
-                        lookupInput = comp.channelName;
+                    if (!comp.id.startsWith('UC')) {
+                        if (comp.influencerName && comp.influencerName.length > 2 && !comp.influencerName.includes(' ')) {
+                            lookupInput = comp.influencerName;
+                        } else {
+                            lookupInput = comp.channelName;
+                        }
                     }
-                }
 
-                const result = await this.fetchYoutubeChannelData(lookupInput);
+                    const result = await this.fetchYoutubeChannelData(lookupInput);
 
-                if (result && result.stats) {
-                    await this.addSnapshot(comp.id, result.stats);
+                    if (result && result.stats) {
+                        await this.addSnapshot(comp.id, result.stats);
 
-                    // Update avatar if changed
-                    if (result.avatarUrl && result.avatarUrl !== comp.avatarUrl) {
-                        await this.updateCompetitorAvatar(comp.id, result.avatarUrl);
+                        if (result.avatarUrl && result.avatarUrl !== comp.avatarUrl) {
+                            await this.updateCompetitorAvatar(comp.id, result.avatarUrl);
+                        }
                     }
+                } catch (e: any) {
+                    this.logger.error(`Error updating ${comp.channelName}: ${e.message}`);
+                    errors.push(`${comp.channelName}: ${e.message}`);
                 }
-            } catch (e) {
-                this.logger.error(`Error updating ${comp.channelName}: ${e.message}`);
-                errors.push(`${comp.channelName}: ${e.message}`);
-            }
-            processed++;
+                processed++;
+            }));
         }
 
         const message = `Updated ${processed} competitors. Errors: ${errors.length}`;
@@ -71,7 +78,7 @@ export class CompetitorsService {
         return message;
     }
 
-    // --- Helpers replicated from Frontend ---
+    // --- Helpers ---
 
     private async fetchCompetitors(): Promise<any[]> {
         const { data: videos, error } = await this.supabase
@@ -90,12 +97,8 @@ export class CompetitorsService {
                 id: v.id,
                 channelName: v.title || 'Sem Nome',
                 influencerName: influencer,
-                channelUrl: v.thumbnail_url || '', // Using thumbnail_url as a fallback for URL storage if needed, or just rely on lookup
+                channelUrl: v.thumbnail_url || '',
                 avatarUrl: v.thumbnail_url,
-                // We need the actual channel URL or handle for lookup. 
-                // In frontend mapToCompetitor, it constructs it.
-                // Here we just need enough info to find it again.
-                // If customUrl exists, use it.
                 customUrl: customUrl
             };
         });
@@ -141,14 +144,14 @@ export class CompetitorsService {
                 const res = await fetch(url);
                 const data = await res.json();
                 if (data.items) items = data.items;
-            } catch (e) { this.logger.warn(`ID lookup warning: ${e.message}`); }
+            } catch (e: any) { this.logger.warn(`ID lookup warning: ${e.message}`); }
         } else if (type === 'handle') {
             try {
                 const url = `${this.BASE_URL}/channels?part=snippet,statistics,contentDetails&forHandle=${encodeURIComponent(value)}&key=${apiKey}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 if (data.items) items = data.items;
-            } catch (e) { this.logger.warn(`Handle lookup warning: ${e.message}`); }
+            } catch (e: any) { this.logger.warn(`Handle lookup warning: ${e.message}`); }
         }
 
         // 2. Fallback to Search
@@ -165,7 +168,7 @@ export class CompetitorsService {
                     const detailsData = await detailsRes.json();
                     if (detailsData.items) items = detailsData.items;
                 }
-            } catch (error) {
+            } catch (error: any) {
                 this.logger.error(`Search fallback failed: ${error.message}`);
             }
         }
