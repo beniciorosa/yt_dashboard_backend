@@ -25,7 +25,6 @@ export class ActiveCampaignService {
             if (data.addresses && data.addresses.length > 0) {
                 return parseInt(data.addresses[0].id);
             }
-            // Fallback to 1 if no addresses found (unlikely for active account) or error
             console.warn('No addresses found in ActiveCampaign, defaulting to senderId 1');
             return 1;
         } catch (error) {
@@ -205,24 +204,33 @@ export class ActiveCampaignService {
             if (!messageData.message) throw new Error("Failed to create message for test: " + JSON.stringify(messageData));
             const messageId = messageData.message.id;
 
-            // 2. Create Campaign (Draft - status 0)
-            const campaignRes = await fetch(`${this.apiUrl}/api/3/campaigns`, {
+            // 2. Create Campaign
+            // FIX: Using status 1 (Scheduled) and public 1 to avoid 405 Method Not Allowed on some accounts
+            // Also adding logging for debugging
+            const campaignUrl = `${this.apiUrl}/api/3/campaigns`;
+            const campaignBody = {
+                campaign: {
+                    type: "single",
+                    name: `TEST: ${subject} (${new Date().getTime()})`,
+                    sdate: new Date(Date.now() + 3600000).toISOString().replace('T', ' ').split('.')[0], // 1 hour in future
+                    status: 1, // Scheduled
+                    public: 1,
+                    tracklinks: "all"
+                }
+            };
+
+            console.log(`[ActiveCampaign] Creating campaign at ${campaignUrl}`);
+            console.log(`[ActiveCampaign] Payload:`, JSON.stringify(campaignBody));
+
+            const campaignRes = await fetch(campaignUrl, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    campaign: {
-                        type: "single",
-                        name: `TEST: ${subject}`,
-                        sdate: new Date().toISOString().replace('T', ' ').split('.')[0],
-                        status: 0, // Hidden/Draft
-                        public: 0,
-                        tracklinks: "all"
-                    }
-                })
+                body: JSON.stringify(campaignBody)
             });
 
             if (!campaignRes.ok) {
                 const errText = await campaignRes.text();
+                console.error(`[ActiveCampaign] Failed to create campaign. Status: ${campaignRes.status}. Response: ${errText}`);
                 throw new Error(`Failed to create campaign (Status ${campaignRes.status}): ${errText}`);
             }
 
@@ -260,7 +268,6 @@ export class ActiveCampaignService {
 
         } catch (error: any) {
             console.error("AC Test Send Error:", error);
-            // Throw a clean error message to the frontend
             throw new HttpException(error.message || "Unknown error sending test email", HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
