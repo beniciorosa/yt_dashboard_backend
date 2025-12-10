@@ -7,11 +7,30 @@ export class ActiveCampaignService {
     private apiKey: string;
 
     constructor(private configService: ConfigService) {
-        this.apiUrl = this.configService.get<string>('ACTIVE_CAMPAIGN_URL') || '';
+        const url = this.configService.get<string>('ACTIVE_CAMPAIGN_URL') || '';
+        this.apiUrl = url.replace(/\/$/, ''); // Remove trailing slash
         this.apiKey = this.configService.get<string>('ACTIVE_CAMPAIGN_KEY') || '';
 
         if (!this.apiUrl || !this.apiKey) {
             console.warn('ActiveCampaign credentials not found in environment variables');
+        }
+    }
+
+    private async getValidSenderId(): Promise<number> {
+        try {
+            const response = await fetch(`${this.apiUrl}/api/3/addresses?limit=1`, {
+                headers: { 'Api-Token': this.apiKey }
+            });
+            const data = await response.json();
+            if (data.addresses && data.addresses.length > 0) {
+                return parseInt(data.addresses[0].id);
+            }
+            // Fallback to 1 if no addresses found (unlikely for active account) or error
+            console.warn('No addresses found in ActiveCampaign, defaulting to senderId 1');
+            return 1;
+        } catch (error) {
+            console.error('Error fetching addresses:', error);
+            return 1;
         }
     }
 
@@ -29,6 +48,8 @@ export class ActiveCampaignService {
 
     async sendCampaign(subject: string, body: string, listId: string) {
         try {
+            const senderId = await this.getValidSenderId();
+
             // 1. Create Message
             const messageRes = await fetch(`${this.apiUrl}/api/3/messages`, {
                 method: 'POST',
@@ -40,7 +61,9 @@ export class ActiveCampaignService {
                         text: body.replace(/<[^>]*>?/gm, ''),
                         p: { [listId]: listId },
                         sender: {
-                            contactId: 1 // Default sender
+                            contactId: senderId,
+                            allow_unsub: 1,
+                            allow_resend: 1
                         }
                     }
                 })
@@ -131,6 +154,8 @@ export class ActiveCampaignService {
 
     async sendTestEmail(subject: string, body: string, emailTo: string) {
         try {
+            const senderId = await this.getValidSenderId();
+
             // 1. Create Message (Draft)
             const messageRes = await fetch(`${this.apiUrl}/api/3/messages`, {
                 method: 'POST',
@@ -141,7 +166,9 @@ export class ActiveCampaignService {
                         html: body,
                         text: body.replace(/<[^>]*>?/gm, ''),
                         sender: {
-                            contactId: 1
+                            contactId: senderId,
+                            allow_unsub: 1,
+                            allow_resend: 1
                         }
                     }
                 })
