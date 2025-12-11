@@ -88,10 +88,8 @@ export class ActiveCampaignService {
                 body: JSON.stringify({
                     type: "single",
                     name: subject,
-                    sdate: new Date().toISOString().replace('T', ' ').split('.')[0],
-                    status: 1, // Scheduled
-                    public: 1,
-                    tracklinks: "all"
+                    // Removing fields not allowed by singular endpoint
+                    // sdate, status, public, tracklinks removed
                 })
             });
 
@@ -172,6 +170,7 @@ export class ActiveCampaignService {
     }
 
     async sendTestEmail(subject: string, body: string, emailTo: string) {
+        console.log("teste envio - Iniciando envio de teste para:", emailTo);
         try {
             const senderId = await this.getValidSenderId();
 
@@ -211,11 +210,8 @@ export class ActiveCampaignService {
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type: "single",
-                    name: `TEST: ${subject} (${new Date().getTime()})`,
-                    sdate: new Date(Date.now() + 3600000).toISOString().replace('T', ' ').split('.')[0], // 1 hour in future
-                    status: 1, // Scheduled
-                    public: 1,
-                    tracklinks: "all"
+                    name: `TEST: ${subject} (${new Date().getTime()})`
+                    // Removing fields not allowed by singular endpoint
                 })
             });
 
