@@ -238,11 +238,19 @@ export class ActiveCampaignService {
             });
 
             // 4. Send Test Preview
-            const testRes = await fetch(`${this.apiUrl}/api/3/campaign/${campaignId}/send-test-preview`, {
+            // Reverting to Plural as Singular returned 404.
+            // Adding Accept header which might fix 405.
+            const testRes = await fetch(`${this.apiUrl}/api/3/campaigns/${campaignId}/send-test-preview`, {
                 method: 'POST',
-                headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
+                headers: {
+                    'Api-Token': this.apiKey,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({
-                    email: emailTo
+                    email: emailTo,
+                    // Sending as array just in case api suggests it
+                    emails: [emailTo]
                 })
             });
 
