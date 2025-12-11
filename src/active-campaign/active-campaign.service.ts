@@ -82,7 +82,7 @@ export class ActiveCampaignService {
             const messageId = messageData.message.id;
 
             // 2. Create Campaign
-            const campaignRes = await fetch(`${this.apiUrl}/api/3/campaigns`, {
+            const campaignRes = await fetch(`${this.apiUrl}/api/3/campaign`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -103,8 +103,8 @@ export class ActiveCampaignService {
             }
 
             const campaignData = await campaignRes.json();
-            if (!campaignData.campaign) throw new Error("Failed to create campaign: " + JSON.stringify(campaignData));
-            const campaignId = campaignData.campaign.id;
+            const campaignId = campaignData.campaign?.id ?? campaignData.id;
+            if (!campaignId) throw new Error("Failed to create campaign: " + JSON.stringify(campaignData));
 
             // 3. Link Message to Campaign
             await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
@@ -207,7 +207,7 @@ export class ActiveCampaignService {
             // 2. Create Campaign
             // FIX: Using status 1 (Scheduled) and public 1 to avoid 405 Method Not Allowed on some accounts
             // Also adding logging for debugging
-            const campaignUrl = `${this.apiUrl}/api/3/campaigns`;
+            const campaignUrl = `${this.apiUrl}/api/3/campaign`;
             const campaignBody = {
                 campaign: {
                     type: "single",
@@ -235,8 +235,8 @@ export class ActiveCampaignService {
             }
 
             const campaignData = await campaignRes.json();
-            if (!campaignData.campaign) throw new Error("Failed to create test campaign: " + JSON.stringify(campaignData));
-            const campaignId = campaignData.campaign.id;
+            const campaignId = campaignData.campaign?.id ?? campaignData.id;
+            if (!campaignId) throw new Error("Failed to create test campaign: " + JSON.stringify(campaignData));
 
             // 3. Link Message
             await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
