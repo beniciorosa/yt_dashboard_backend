@@ -86,14 +86,12 @@ export class ActiveCampaignService {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    campaign: {
-                        type: "single",
-                        name: subject,
-                        sdate: new Date().toISOString().replace('T', ' ').split('.')[0],
-                        status: 1, // Scheduled
-                        public: 1,
-                        tracklinks: "all"
-                    }
+                    type: "single",
+                    name: subject,
+                    sdate: new Date().toISOString().replace('T', ' ').split('.')[0],
+                    status: 1, // Scheduled
+                    public: 1,
+                    tracklinks: "all"
                 })
             });
 
@@ -208,24 +206,17 @@ export class ActiveCampaignService {
             // FIX: Using status 1 (Scheduled) and public 1 to avoid 405 Method Not Allowed on some accounts
             // Also adding logging for debugging
             const campaignUrl = `${this.apiUrl}/api/3/campaign`;
-            const campaignBody = {
-                campaign: {
+            const campaignRes = await fetch(campaignUrl, {
+                method: 'POST',
+                headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     type: "single",
                     name: `TEST: ${subject} (${new Date().getTime()})`,
                     sdate: new Date(Date.now() + 3600000).toISOString().replace('T', ' ').split('.')[0], // 1 hour in future
                     status: 1, // Scheduled
                     public: 1,
                     tracklinks: "all"
-                }
-            };
-
-            console.log(`[ActiveCampaign] Creating campaign at ${campaignUrl}`);
-            console.log(`[ActiveCampaign] Payload:`, JSON.stringify(campaignBody));
-
-            const campaignRes = await fetch(campaignUrl, {
-                method: 'POST',
-                headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify(campaignBody)
+                })
             });
 
             if (!campaignRes.ok) {
