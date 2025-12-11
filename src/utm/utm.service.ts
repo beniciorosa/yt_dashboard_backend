@@ -17,8 +17,8 @@ export class UtmService {
         private configService: ConfigService,
         private openaiService: OpenaiService
     ) {
-        const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-        const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
+        const supabaseUrl = this.configService.get<string>('UTM_SUPABASE_URL');
+        const supabaseKey = this.configService.get<string>('UTM_SUPABASE_KEY');
         this.SHORT_IO_API_KEY = this.configService.get<string>('SHORT_IO_API_KEY') || "";
 
         if (!supabaseUrl || !supabaseKey) {
