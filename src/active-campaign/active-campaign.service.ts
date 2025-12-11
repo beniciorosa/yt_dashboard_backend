@@ -226,7 +226,7 @@ export class ActiveCampaignService {
             if (!campaignId) throw new Error("Failed to create test campaign: " + JSON.stringify(campaignData));
 
             // 3. Link Message
-            await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
+            const linkRes = await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -236,6 +236,12 @@ export class ActiveCampaignService {
                     }
                 })
             });
+
+            if (!linkRes.ok) {
+                const linkErr = await linkRes.text();
+                console.error(`[ActiveCampaign] Failed to link message ${messageId} to campaign ${campaignId}. Status: ${linkRes.status}. Resp: ${linkErr}`);
+                throw new Error(`Failed to link message to campaign: ${linkErr}`);
+            }
 
             // 4. Send Test Preview (Using Legacy v1 API as v3 lacks public endpoint)
             const legacyUrl = `${this.apiUrl}/admin/api.php`;
