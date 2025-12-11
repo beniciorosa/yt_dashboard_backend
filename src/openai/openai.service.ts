@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import * as fs from 'fs';
@@ -194,6 +194,12 @@ export class OpenaiService {
             // Or use 'toFile' from openai/uploads if available, or just pass the buffer with name.
             // OpenAI Node SDK supports passing a File-like object.
 
+            if (!file) {
+                throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
+            }
+
+            console.log(`Transcribing file: ${file.originalname}, size: ${file.size} bytes`);
+
             const transcription = await this.openai.audio.transcriptions.create({
                 file: await import('openai/uploads').then(m => m.toFile(file.buffer, file.originalname)),
                 model: 'whisper-1',
@@ -202,9 +208,10 @@ export class OpenaiService {
             });
 
             return transcription;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error transcribing audio with OpenAI:", error);
-            throw new Error("Failed to transcribe audio");
+            // Throw the actual error message so the frontend can see it
+            throw new HttpException(`Failed to transcribe audio: ${error.message || error}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }
