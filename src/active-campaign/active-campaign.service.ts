@@ -237,27 +237,35 @@ export class ActiveCampaignService {
                 })
             });
 
-            // 4. Send Test Preview
-            // Reverting to Plural as Singular returned 404.
-            // Adding Accept header which might fix 405.
-            const testRes = await fetch(`${this.apiUrl}/api/3/campaigns/${campaignId}/send-test-preview`, {
+            // 4. Send Test Preview (Using Legacy v1 API as v3 lacks public endpoint)
+            const legacyUrl = `${this.apiUrl}/admin/api.php`;
+            const params = new URLSearchParams();
+            params.append('api_action', 'campaign_send_test');
+            params.append('api_key', this.apiKey);
+            params.append('api_output', 'json');
+            params.append('email', emailTo);
+            params.append('campaignid', campaignId);
+
+            const testRes = await fetch(legacyUrl, {
                 method: 'POST',
                 headers: {
-                    'Api-Token': this.apiKey,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: JSON.stringify({
-                    email: emailTo,
-                    // Sending as array just in case api suggests it
-                    emails: [emailTo]
-                })
+                body: params.toString()
             });
 
             if (!testRes.ok) {
                 const errText = await testRes.text();
-                throw new Error(`Failed to send test preview (Status ${testRes.status}): ${errText}`);
+                throw new Error(`Failed to send test preview (Legacy API Status ${testRes.status}): ${errText}`);
             }
+
+            // Legacy API returns 200 even on some logic errors, check body result_code if possible
+            const testData = await testRes.json();
+            if (testData.result_code === 0) {
+                throw new Error(`Failed to send test preview: ${testData.result_message}`);
+            }
+
+            return { success: true, message: "Test email sent successfully (via Legacy API)" };
 
             return { success: true, message: "Test email sent successfully" };
 
