@@ -9,10 +9,15 @@ export class OpenaiService {
     private openai: OpenAI;
 
     constructor(private configService: ConfigService) {
-        const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+        let apiKey = this.configService.get<string>('OPENAI_API_KEY');
+
         if (!apiKey) {
             console.warn('OPENAI_API_KEY not found in environment variables');
+        } else {
+            apiKey = apiKey.trim();
+            console.log(`OpenAI API Key loaded. Length: ${apiKey.length}, Starts with: ${apiKey.substring(0, 7)}..., Ends with: ...${apiKey.substring(apiKey.length - 4)}`);
         }
+
         this.openai = new OpenAI({
             apiKey: apiKey,
         });
