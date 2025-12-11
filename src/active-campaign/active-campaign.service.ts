@@ -247,37 +247,15 @@ export class ActiveCampaignService {
                 throw new Error(`Failed to link message to campaign: ${linkErr}`);
             }
 
-            // 4. Send Test Preview (Using Legacy v1 API as v3 lacks public endpoint)
-            const legacyUrl = `${this.apiUrl}/admin/api.php`;
-            const params = new URLSearchParams();
-            params.append('api_action', 'campaign_send_test');
-            params.append('api_key', this.apiKey);
-            params.append('api_output', 'json');
-            params.append('email', emailTo);
-            params.append('campaignid', campaignId);
+            // 4. Skip Sending - End as Draft
+            // User requested to save as draft to send via panel
+            console.log(`[ActiveCampaign] Test Campaign ${campaignId} created as draft.`);
 
-            const testRes = await fetch(legacyUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: params.toString()
-            });
-
-            if (!testRes.ok) {
-                const errText = await testRes.text();
-                throw new Error(`Failed to send test preview (Legacy API Status ${testRes.status}): ${errText}`);
-            }
-
-            // Legacy API returns 200 even on some logic errors, check body result_code if possible
-            const testData = await testRes.json();
-            if (testData.result_code === 0) {
-                throw new Error(`Failed to send test preview: ${testData.result_message}`);
-            }
-
-            return { success: true, message: "Test email sent successfully (via Legacy API)" };
-
-            return { success: true, message: "Test email sent successfully" };
+            return {
+                success: true,
+                message: "Campanha salva como Rascunho! Acesse o painel do ActiveCampaign para enviar.",
+                campaignId
+            };
 
         } catch (error: any) {
             console.error("AC Test Send Error:", error);
