@@ -16,8 +16,8 @@ export class ActiveCampaignController {
     }
 
     @Post('send')
-    async sendCampaign(@Body() body: { subject: string; body: string; listId: string }) {
-        return this.activeCampaignService.sendCampaign(body.subject, body.body, body.listId);
+    async sendCampaign(@Body() body: { subject: string; body: string; listId: string; fromname: string; fromemail: string; reply2: string }) {
+        return this.activeCampaignService.sendCampaign(body.subject, body.body, body.listId, body.fromname, body.fromemail, body.reply2);
     }
 
     @Post('send-test')

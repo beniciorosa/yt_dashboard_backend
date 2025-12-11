@@ -53,7 +53,7 @@ export class ActiveCampaignService {
         }
     }
 
-    async sendCampaign(subject: string, body: string, listId: string) {
+    async sendCampaign(subject: string, body: string, listId: string, fromname: string, fromemail: string, reply2: string) {
         try {
             const senderId = await this.getValidSenderId();
 
@@ -96,6 +96,9 @@ export class ActiveCampaignService {
                 body: JSON.stringify({
                     type: "single",
                     name: subject,
+                    fromname: fromname,
+                    fromemail: fromemail,
+                    reply2: reply2,
                     // Parameters to match verified curl
                     canSplitContent: false,
                     // Removing fields not allowed by singular endpoint
