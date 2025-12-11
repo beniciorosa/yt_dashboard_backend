@@ -103,14 +103,12 @@ export class ActiveCampaignService {
             if (!campaignId) throw new Error("Failed to create campaign: " + JSON.stringify(campaignData));
 
             // 3. Link Message to Campaign
-            await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
+            await fetch(`${this.apiUrl}/api/3/campaignMessage`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    campaignMessage: {
-                        campaign: campaignId,
-                        message: messageId
-                    }
+                    campaign: campaignId,
+                    message: messageId
                 })
             });
 
@@ -226,14 +224,12 @@ export class ActiveCampaignService {
             if (!campaignId) throw new Error("Failed to create test campaign: " + JSON.stringify(campaignData));
 
             // 3. Link Message
-            const linkRes = await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
+            const linkRes = await fetch(`${this.apiUrl}/api/3/campaignMessage`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    campaignMessage: {
-                        campaign: campaignId,
-                        message: messageId
-                    }
+                    campaign: campaignId,
+                    message: messageId
                 })
             });
 
