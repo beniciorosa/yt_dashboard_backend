@@ -6,6 +6,7 @@ import { CompetitorsModule } from './competitors/competitors.module';
 import { OpenaiModule } from './openai/openai.module';
 import { YoutubeModule } from './youtube/youtube.module';
 import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
+import { UtmModule } from './utm/utm.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
     OpenaiModule,
     YoutubeModule,
     ActiveCampaignModule,
+    UtmModule,
   ],
   controllers: [AppController],
   providers: [AppService],

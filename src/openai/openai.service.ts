@@ -231,4 +231,48 @@ export class OpenaiService {
             throw new HttpException(`Failed to transcribe audio: ${error.message || error}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    async generateSlug(title: string): Promise<string> {
+        const prompt = `
+            Role: SEO Expert for YouTube.
+            Task: Create a concise URL slug from the video title.
+            
+            STRICT RULES:
+            1. Length: Use EXACTLY 3 or 4 words.
+            2. Content: Extract the core topic/subject. Remove stop words (pt-BR: a, o, de, da, do, com, sem, para, em, no, na).
+            3. Format: lowercase-words-separated-by-hyphens
+            4. No Dates: Do NOT include numbers related to dates.
+            5. Output: Return ONLY the slug string. No markdown, no quotes, no explanations.
+
+            Input Title: "${title}"
+            Output Slug:
+        `;
+
+        try {
+            const completion = await this.openai.chat.completions.create({
+                messages: [
+                    { role: 'system', content: 'You are a helpful assistant that generates slugs.' },
+                    { role: 'user', content: prompt },
+                ],
+                model: 'gpt-4o', // Using gpt-4o as replacement for gemini-2.5-flash
+                max_tokens: 50,
+                temperature: 0.2,
+            });
+
+            let text = completion.choices[0].message.content || "";
+
+            // Clean up potential markdown code blocks or quotes
+            text = text.replace(/```/g, '').replace(/`/g, '').replace(/"/g, '').replace(/'/g, '').trim();
+
+            // Ensure it looks like a slug
+            if (text.includes(' ')) {
+                text = text.split(/\s+/).join('-');
+            }
+
+            return text;
+        } catch (error) {
+            console.error("Error generating slug with OpenAI:", error);
+            throw new Error("Failed to generate slug");
+        }
+    }
 }
