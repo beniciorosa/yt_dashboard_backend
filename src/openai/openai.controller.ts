@@ -17,8 +17,7 @@ export class OpenaiController {
     }
 
     @Post('transcribe')
-    @UseInterceptors(FileInterceptor('file'))
-    async transcribeAudio(@UploadedFile() file: any) {
-        return this.openaiService.transcribeAudio(file);
+    async transcribeAudio(@Body() body: { fileUrl: string }) {
+        return this.openaiService.transcribeAudio(body.fileUrl);
     }
 }

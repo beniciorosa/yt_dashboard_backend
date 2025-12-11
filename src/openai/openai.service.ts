@@ -193,20 +193,32 @@ export class OpenaiService {
         }
     }
 
-    async transcribeAudio(file: Express.Multer.File) {
+    async transcribeAudio(fileUrl: string) {
         try {
-            // Need to write file to disk temporarily because OpenAI SDK expects a file path or ReadStream
-            // Or use 'toFile' from openai/uploads if available, or just pass the buffer with name.
-            // OpenAI Node SDK supports passing a File-like object.
-
-            if (!file) {
-                throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
+            if (!fileUrl) {
+                throw new HttpException('No file URL provided', HttpStatus.BAD_REQUEST);
             }
 
-            console.log(`Transcribing file: ${file.originalname}, size: ${file.size} bytes`);
+            console.log(`Downloading file from URL: ${fileUrl}`);
+
+            // Download file from Supabase Storage URL
+            const response = await fetch(fileUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to download file: ${response.statusText}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // Extract filename from URL or use default
+            const urlObj = new URL(fileUrl);
+            const pathname = urlObj.pathname;
+            const originalName = pathname.split('/').pop() || 'audio.mp3';
+
+            console.log(`Transcribing file: ${originalName}, size: ${buffer.length} bytes`);
 
             const transcription = await this.openai.audio.transcriptions.create({
-                file: await import('openai/uploads').then(m => m.toFile(file.buffer, file.originalname)),
+                file: await import('openai/uploads').then(m => m.toFile(buffer, originalName)),
                 model: 'whisper-1',
                 language: 'pt',
                 response_format: 'srt',
