@@ -88,10 +88,16 @@ export class ActiveCampaignService {
             // 2. Create Campaign
             const campaignRes = await fetch(`${this.apiUrl}/api/3/campaign`, {
                 method: 'POST',
-                headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
+                headers: {
+                    'Api-Token': this.apiKey,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({
                     type: "single",
                     name: subject,
+                    // Parameters to match verified curl
+                    canSplitContent: false,
                     // Removing fields not allowed by singular endpoint
                     // sdate, status, public, tracklinks removed
                 })
@@ -211,10 +217,16 @@ export class ActiveCampaignService {
             const campaignUrl = `${this.apiUrl}/api/3/campaign`;
             const campaignRes = await fetch(campaignUrl, {
                 method: 'POST',
-                headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
+                headers: {
+                    'Api-Token': this.apiKey,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({
                     type: "single",
-                    name: `TEST: ${subject} (${new Date().getTime()})`
+                    name: `TEST: ${subject} (${new Date().getTime()})`,
+                    // Parameters to match verified curl
+                    canSplitContent: false
                     // Removing fields not allowed by singular endpoint
                 })
             });
