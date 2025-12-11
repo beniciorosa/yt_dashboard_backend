@@ -8,10 +8,8 @@ export class ActiveCampaignService {
 
     constructor(private configService: ConfigService) {
         let url = this.configService.get<string>('ACTIVE_CAMPAIGN_URL') || '';
-        // Force HTTPS
-        if (url.startsWith('http:')) {
-            url = url.replace('http:', 'https:');
-        }
+        // Force HTTPS regex to replace http:// with https://
+        url = url.replace(/^http:\/\//i, 'https://');
         this.apiUrl = url.replace(/\/$/, ''); // Remove trailing slash
         this.apiKey = this.configService.get<string>('ACTIVE_CAMPAIGN_KEY') || '';
 
@@ -53,19 +51,29 @@ export class ActiveCampaignService {
         }
     }
 
-    async sendCampaign(subject: string, body: string, listId: string, fromname: string, fromemail: string, reply2: string) {
+    async sendCampaign(subject: string, body: string, listId: string, fromname: string, fromemail: string, reply2: string, preheader: string) {
         try {
             const senderId = await this.getValidSenderId();
 
             // 1. Create Message
+            // Appending preheader to the body as hidden text if possible or just prepend
+            // ActiveCampaign v3 message object doesn't have a direct 'preheader' field documented commonly,
+            // but often it's handled by adding a hidden div at the start of html.
+            const fullHtml = `
+                <div style="display:none;font-size:1px;color:#333333;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
+                    ${preheader}
+                </div>
+                ${body}
+            `;
+
             const messageRes = await fetch(`${this.apiUrl}/api/3/messages`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: {
                         subject: subject,
-                        html: body,
-                        text: body.replace(/<[^>]*>?/gm, ''),
+                        html: fullHtml,
+                        text: fullHtml.replace(/<[^>]*>?/gm, ''),
                         p: { [listId]: listId },
                         sender: {
                             contactId: senderId,
