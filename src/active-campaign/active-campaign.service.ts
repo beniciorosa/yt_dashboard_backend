@@ -238,7 +238,7 @@ export class ActiveCampaignService {
             });
 
             // 4. Send Test Preview
-            const testRes = await fetch(`${this.apiUrl}/api/3/campaigns/${campaignId}/send-test-preview`, {
+            const testRes = await fetch(`${this.apiUrl}/api/3/campaign/${campaignId}/send-test-preview`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
