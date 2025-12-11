@@ -7,7 +7,11 @@ export class ActiveCampaignService {
     private apiKey: string;
 
     constructor(private configService: ConfigService) {
-        const url = this.configService.get<string>('ACTIVE_CAMPAIGN_URL') || '';
+        let url = this.configService.get<string>('ACTIVE_CAMPAIGN_URL') || '';
+        // Force HTTPS
+        if (url.startsWith('http:')) {
+            url = url.replace('http:', 'https:');
+        }
         this.apiUrl = url.replace(/\/$/, ''); // Remove trailing slash
         this.apiKey = this.configService.get<string>('ACTIVE_CAMPAIGN_KEY') || '';
 
@@ -103,12 +107,14 @@ export class ActiveCampaignService {
             if (!campaignId) throw new Error("Failed to create campaign: " + JSON.stringify(campaignData));
 
             // 3. Link Message to Campaign
-            await fetch(`${this.apiUrl}/api/3/campaignMessage`, {
+            await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    campaign: campaignId,
-                    message: messageId
+                    campaignMessage: {
+                        campaign: campaignId,
+                        message: messageId
+                    }
                 })
             });
 
@@ -224,12 +230,14 @@ export class ActiveCampaignService {
             if (!campaignId) throw new Error("Failed to create test campaign: " + JSON.stringify(campaignData));
 
             // 3. Link Message
-            const linkRes = await fetch(`${this.apiUrl}/api/3/campaignMessage`, {
+            const linkRes = await fetch(`${this.apiUrl}/api/3/campaignMessages`, {
                 method: 'POST',
                 headers: { 'Api-Token': this.apiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    campaign: campaignId,
-                    message: messageId
+                    campaignMessage: {
+                        campaign: campaignId,
+                        message: messageId
+                    }
                 })
             });
 
