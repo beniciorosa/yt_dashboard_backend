@@ -46,10 +46,7 @@ export class YoutubeService {
             });
         }
 
-        // We do NOT use the API Key when using OAuth token normally, 
-        // but it doesn't hurt to have it unless there's a specific conflict.
-        // Usually Authenticated calls rely solely on the Bearer token.
-        // url.searchParams.append('key', this.apiKey); 
+        console.log(`[ProxyAction] ${method} ${url.toString()}`);
 
         try {
             const response = await fetch(url.toString(), {
@@ -62,29 +59,31 @@ export class YoutubeService {
                 body: data ? JSON.stringify(data) : undefined
             });
 
-            if (!response.ok) {
-                // Try to parse error body
-                let errorBody;
-                try {
-                    const text = await response.text();
-                    try {
-                        errorBody = JSON.parse(text);
-                    } catch {
-                        errorBody = text;
-                    }
-                } catch (e) {
-                    errorBody = "Could not read error body";
-                }
-                console.error(`Error in proxyAction for ${endpoint}:`, errorBody);
-                throw new Error(JSON.stringify(errorBody) || 'YouTube API Error');
+            const status = response.status;
+            console.log(`[ProxyAction] Status: ${status}`);
+
+            // 1. Safely read body ONCE
+            const rawBody = await response.text();
+
+            // 2. Try parse JSON
+            let jsonBody;
+            try {
+                jsonBody = rawBody ? JSON.parse(rawBody) : null;
+            } catch {
+                jsonBody = rawBody; // Fallback to text
             }
 
-            // Some actions like delete might return 204 No Content
-            if (response.status === 204) {
+            if (!response.ok) {
+                console.error(`[ProxyAction] Upstream Error (${status}):`, rawBody);
+                throw new Error(JSON.stringify(jsonBody) || `YouTube API Error ${status}`);
+            }
+
+            if (status === 204) {
                 return { success: true };
             }
 
-            return await response.json();
+            return jsonBody || { success: true };
+
         } catch (error) {
             console.error(`Error proxying action to YouTube ${endpoint}:`, error);
             throw error;
