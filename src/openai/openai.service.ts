@@ -89,12 +89,13 @@ export class OpenaiService {
       O Título do vídeo é: "${videoTitle}"
       DURAÇÃO ESTIMADA DO VÍDEO (Baseado no SRT): ${lastTime}
 
-      Gere uma saída JSON com exatamente 3 campos: "intro", "chapters", "hashtags".
+      Gere uma saída JSON com exatamente 5 campos: "intro", "chapters", "hashtags", "description_rationale", "chapters_rationale".
       
       Regras para "intro":
-      1. Escreva entre 2 a 3 parágrafos curtos e envolventes resumindo o conteúdo do vídeo, sempre divididos pelo espaçamento de uma linha entre eles.
+      1. Escreva entre 2 a 3 parágrafos curtos e envolventes resumindo o conteúdo do vídeo, sempre em primeira pessoa, sempre divididos pelo espaçamento de uma linha entre eles.
+        - Ex: "Eu vou te ensinar", "Eu explico", "Eu vou te mostrar".
       2. OBRIGATÓRIO: O primeiro parágrafo deve incluir as palavras-chave principais contidas no título do vídeo de forma natural nas primeiras 150 caracteres.
-      3. Use tom persuasivo e em primeira pessoa ("Você vai entender", "Eu explico", "Vou te mostrar"), e o texto próximo da linguagem utilizada no vídeo, com menos formalidade.
+      3. Use tom persuasivo e o texto próximo da linguagem utilizada na transcrição, com menos formalidade.
       4. Não use saudações como "Olá pessoal". Vá direto ao ponto.
       
       Regras CRÍTICAS para "chapters" (EVITE ALUCINAÇÕES DE TEMPO E FORMATO):
@@ -115,6 +116,12 @@ export class OpenaiService {
       1. Gere exatamente 3 hashtags altamente relevantes.
       2. Formato: "#tag1 #tag2 #tag3".
       3. Separe por espaços. NÃO use vírgulas. Utilize Acentos se existir.
+
+      Regras para "description_rationale" e "chapters_rationale":
+      1. Nestes campos, explique brevemente (em português) POR QUE você escolheu esses pontos específicos.
+      2. "description_rationale": Explique o foco da copy, quais gatilhos mentais usou e por que escolheu a intro dessa forma.
+      3. "chapters_rationale": Explique a lógica da divisão dos capítulos, o que considerou importante destacar.
+      4. Seja direto e didático nestes racionais. Útil para o criador entender a estratégia.
 
       Responda APENAS o JSON.
       
@@ -184,7 +191,9 @@ export class OpenaiService {
             return {
                 intro: Array.isArray(jsonResponse.intro) ? jsonResponse.intro.join('\n\n') : (jsonResponse.intro || ""),
                 chapters: cleanChapters,
-                hashtags: jsonResponse.hashtags || ""
+                hashtags: jsonResponse.hashtags || "",
+                description_rationale: jsonResponse.description_rationale || "Sem racional gerado.",
+                chapters_rationale: jsonResponse.chapters_rationale || "Sem racional gerado."
             };
 
         } catch (error) {
