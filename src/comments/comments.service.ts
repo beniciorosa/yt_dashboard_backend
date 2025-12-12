@@ -25,7 +25,7 @@ export class CommentsService {
         });
     }
 
-    async generateAiReply(commentText: string, videoTitle?: string, style: string = 'professional') {
+    async generateAiReply(commentText: string, videoTitle?: string, style: string = 'professional', authorName?: string) {
         // 1. Fetch recent examples to learn tone
         let examples = "";
         try {
@@ -33,7 +33,7 @@ export class CommentsService {
                 .from('reply_examples')
                 .select('comment_text, reply_text')
                 .order('created_at', { ascending: false })
-                .limit(10);
+                .limit(50); // Increased limit as requested
 
             if (recentReplies && recentReplies.length > 0) {
                 examples = "Exemplos do meu estilo de resposta:\n" +
@@ -59,8 +59,11 @@ export class CommentsService {
             CONTEXTO SOBRE MIM (IMPORTANTE):
             - Eu uso gírias moderadas como "Tmj, mano!", "Valeu demais!", "Fala [Nome], beleza?".
             - Eu sou atencioso, mas natural. Não pareço um robô corporativo.
-            - Eu cito o nome da pessoa sempre que possível no início. Ex: "Fala, Pedro!".
+            - Eu cito o nome da pessoa sempre que possível no início, se o nome for legível.
             
+            NOME DO INSCRITO: "${authorName || 'Desconhecido'}"
+            (Se o nome for 'Desconhecido' ou ilemgrama, não use o nome. Se for um nome comum, comece com "Fala ${authorName || ''}, ...")
+
             ${examples ? `Abaixo estão exemplos REAIS de como eu respondo. COPIE MEU TOM E ESTILO:\n${examples}\n\nAgora, responda este novo comentário seguindo o mesmo estilo:` : "Responda de forma natural e engajada."}
 
             NOVO COMENTÁRIO: "${commentText}"
@@ -71,8 +74,7 @@ export class CommentsService {
             REGRAS:
             - Responda apenas com o texto da resposta.
             - Máximo 2-3 frases.
-            - Se o comentário for um elogio simples, agradeça com "Valeu pelo apoio!" ou similar.
-            - Use emojis com moderação, se fizer sentido no meu estilo.
+            - Tente iniciar com o nome da pessoa se fizer sentido (ex: "Fala Jonas, ...").
         `;
 
         try {

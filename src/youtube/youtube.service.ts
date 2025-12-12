@@ -66,9 +66,14 @@ export class YoutubeService {
                 // Try to parse error body
                 let errorBody;
                 try {
-                    errorBody = await response.json();
+                    const text = await response.text();
+                    try {
+                        errorBody = JSON.parse(text);
+                    } catch {
+                        errorBody = text;
+                    }
                 } catch (e) {
-                    errorBody = await response.text();
+                    errorBody = "Could not read error body";
                 }
                 console.error(`Error in proxyAction for ${endpoint}:`, errorBody);
                 throw new Error(JSON.stringify(errorBody) || 'YouTube API Error');

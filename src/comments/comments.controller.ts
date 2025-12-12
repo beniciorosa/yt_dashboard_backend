@@ -6,8 +6,8 @@ export class CommentsController {
     constructor(private readonly commentsService: CommentsService) { }
 
     @Post('generate-reply')
-    async generateReply(@Body() body: { commentText: string, videoTitle?: string, style?: string }) {
-        return await this.commentsService.generateAiReply(body.commentText, body.videoTitle, body.style);
+    async generateReply(@Body() body: { commentText: string, videoTitle?: string, style?: string, authorName?: string }) {
+        return await this.commentsService.generateAiReply(body.commentText, body.videoTitle, body.style, body.authorName);
     }
 
     @Get('quick-replies')
