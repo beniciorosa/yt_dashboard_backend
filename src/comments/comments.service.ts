@@ -45,11 +45,12 @@ export class CommentsService {
 
         let styleInstruction = "";
         switch (style) {
-            case 'concise': styleInstruction = "Seja direto, curto e objetivo."; break;
-            case 'friendly': styleInstruction = "Seja muito amigável, use emojis e mostre entusiasmo."; break;
-            case 'question': styleInstruction = "Agradeça e termine com uma pergunta para engajar."; break;
-            case 'grateful': styleInstruction = "Foque em agradecer o apoio e carinho."; break;
-            default: styleInstruction = "Seja profissional, polido e útil."; break;
+            // Updated to be less "over-friendly" and more direct as requested
+            case 'concise': styleInstruction = "Seja extremamente direto (max 1 frase)."; break;
+            case 'friendly': styleInstruction = "Seja simpático, mas sem exageros. Emojis apenas se natural."; break;
+            case 'question': styleInstruction = "Responda e engate uma pergunta relacionada."; break;
+            case 'grateful': styleInstruction = "Agradeça o apoio de forma sincera e breve."; break;
+            default: styleInstruction = "Seja profissional, direto e útil. Evite enrolação."; break;
         }
 
         const prompt = `
@@ -61,8 +62,14 @@ export class CommentsService {
             - Eu sou atencioso, mas natural. Não pareço um robô corporativo.
             - Eu cito o nome da pessoa sempre que possível no início, se o nome for legível.
             
+            
             NOME DO INSCRITO: "${authorName || 'Desconhecido'}"
-            (Se o nome for 'Desconhecido' ou ilemgrama, não use o nome. Se for um nome comum, comece com "Fala ${authorName || ''}, ...")
+            (SEMPRE trate o nome do inscrito:
+             1. Se for um handle (@nome), remova o '@'.
+             2. Remova números do final (ex: 'joao123' -> 'Joao').
+             3. Pegue APENAS o primeiro nome e Capitalize. (ex: 'rosangelastefanello6710' -> 'Rosangela').
+             4. Se o nome resultante for estranho ou ininteligível, não use o nome.
+             5. Se for um nome comum, comece com "Fala [NomeLimpo], ...")
 
             ${examples ? `Abaixo estão exemplos REAIS de como eu respondo. COPIE MEU TOM E ESTILO:\n${examples}\n\nAgora, responda este novo comentário seguindo o mesmo estilo:` : "Responda de forma natural e engajada."}
 
