@@ -92,37 +92,35 @@ export class OpenaiService {
       Gere uma saída JSON com exatamente 5 campos: "intro", "chapters", "hashtags", "description_rationale", "chapters_rationale".
       
       Regras para "intro":
-      1. Escreva entre 2 a 3 parágrafos curtos e envolventes resumindo o conteúdo do vídeo, sempre em primeira pessoa, sempre divididos pelo espaçamento de uma linha entre eles.
-        - Ex: "Eu vou te ensinar", "Eu explico", "Eu vou te mostrar".
-      2. OBRIGATÓRIO: O primeiro parágrafo deve incluir as palavras-chave principais contidas no título do vídeo de forma natural nas primeiras 150 caracteres.
-      3. Use tom persuasivo e o texto próximo da linguagem utilizada na transcrição, com menos formalidade.
-      4. Não use saudações como "Olá pessoal". Vá direto ao ponto.
+      1. Escreva entre 2 a 3 parágrafos curtos e envolventes resumindo o conteúdo do vídeo, sempre em primeira pessoa.
+      2. O PRIMEIRO parágrafo é vital para o ALGORITMO (CTR e Retenção). Ele deve:
+         - Conter as palavras-chave do título.
+         - Gerar curiosidade imediata (Loop Aberto).
+         - Prometer um benefício claro para quem assistir até o fim.
+      3. Use tom conversacional, persuasivo e magnético. Evite linguagem robótica.
       
-      Regras CRÍTICAS para "chapters" (EVITE ALUCINAÇÕES DE TEMPO E FORMATO):
-      1. O SRT está no formato "HH:MM:SS,ms". VOCÊ DEVE CONVERTER PARA "MM:SS".
-         Exemplo: Se o timestamp for "00:05:32,400", seu capítulo DEVE ser "05:32". 
-         NÃO inclua a hora "00:" inicial.
-      2. ANALISE O SRT REAL. O vídeo termina em ${lastTime}. NENHUM capítulo pode ter um horário superior a ${lastTime}.
-      3. ESPAÇAMENTO OBRIGATÓRIO:
-         - O primeiro capítulo deve ser "00:00 – Introdução".
-         - O segundo capítulo NÃO PODE SER "00:01", "00:05" ou qualquer tempo imediatamente colado.
-         - O segundo capítulo deve ter pelo menos 20 segundos de diferença do primeiro (Ex: 00:30 em diante).
-         - Mantenha um intervalo saudável entre os tópicos. Não gere capítulos a cada 1 minuto se o assunto for o mesmo.
-      4. QUANTIDADE:
-         - Se o vídeo for curto (menos de 10 min), gere no máximo 4 ou 5 capítulos.
-      5. O formato da string deve ser EXATAMENTE: "MM:SS – Título do Tópico".
+      Regras CRÍTICAS para "chapters" (EVITE ALUCINAÇÕES):
+      1. USE OS TIMESTAMPS EXATOS DO SRT. NÃO ARREDONDE. Se o SRT diz "04:12", use "04:12".
+      2. O vídeo termina em ${lastTime}. NENHUM capítulo pode passar desse tempo.
+      3. Crie capítulos baseados em RETENÇÃO: Identifique os momentos de "virada" ou "picos de interesse" no conteúdo.
+      4. Formato EXATO: "MM:SS – Título Magnético".
+         - Títulos de capítulos devem gerar curiosidade (ex: "O Segredo de R$10k" em vez de "Faturamento").
+      5. Mínimo 3 capítulos, Máximo 8 (dependendo da duração).
       
       Regras para "hashtags":
-      1. Gere exatamente 3 hashtags altamente relevantes.
-      2. Formato: "#tag1 #tag2 #tag3".
-      3. Separe por espaços. NÃO use vírgulas. Utilize Acentos se existir.
-
-      Regras para "description_rationale" e "chapters_rationale":
-      1. Nestes campos, explique brevemente (em português) POR QUE você escolheu esses pontos específicos.
-      2. "description_rationale": Explique o foco da copy, quais gatilhos mentais usou e por que escolheu a intro dessa forma.
-      3. "chapters_rationale": Explique a lógica da divisão dos capítulos, o que considerou importante destacar.
-      4. Seja direto e didático nestes racionais. Útil para o criador entender a estratégia.
-
+      1. Exatamente 3 hashtags de alta busca no nicho.
+      
+      Regras para "description_rationale" e "chapters_rationale" (THINKING PROCESS):
+      1. "description_rationale": Explique COMO a descrição criada atende ao Algoritmo do YouTube.
+         - Cite gatilhos de retenção usados.
+         - Explique o uso de palavras-chave para SEO.
+         - Justifique o tom de voz escolhido para maximizar cliques.
+      2. "chapters_rationale": Explique a estratégia de segmentação.
+         - Por que escolheu esses pontos de corte?
+         - Como os títulos dos capítulos ajudam na navegação e retenção do usuário?
+         - Mostre que você entendeu a estrutura narrativa do vídeo.
+      3. Seja profundo e analítico, como um estrategista de YouTube Senior.
+      
       Responda APENAS o JSON.
       
       TRANSCRIÇÃO SRT:
