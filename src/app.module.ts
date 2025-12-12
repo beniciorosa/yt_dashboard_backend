@@ -7,6 +7,7 @@ import { OpenaiModule } from './openai/openai.module';
 import { YoutubeModule } from './youtube/youtube.module';
 import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
 import { UtmModule } from './utm/utm.module';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UtmModule } from './utm/utm.module';
     YoutubeModule,
     ActiveCampaignModule,
     UtmModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

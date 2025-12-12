@@ -282,4 +282,21 @@ export class OpenaiService {
             throw new Error("Failed to generate slug");
         }
     }
+
+    async generateText(prompt: string): Promise<string> {
+        try {
+            const completion = await this.openai.chat.completions.create({
+                messages: [
+                    { role: 'system', content: 'You are a helpful assistant.' },
+                    { role: 'user', content: prompt }
+                ],
+                model: 'gpt-4o',
+            });
+
+            return completion.choices[0].message.content || "";
+        } catch (error) {
+            console.error("Error generating text with OpenAI:", error);
+            throw new Error("Failed to generate text");
+        }
+    }
 }
