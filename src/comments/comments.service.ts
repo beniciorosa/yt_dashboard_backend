@@ -26,8 +26,22 @@ export class CommentsService {
     }
 
     async generateAiReply(commentText: string, videoTitle?: string, style: string = 'professional') {
-        // Construct a prompt based on the user's style preference
-        // styles: 'concise', 'friendly', 'question', 'grateful'
+        // 1. Fetch recent examples to learn tone
+        let examples = "";
+        try {
+            const { data: recentReplies } = await this.supabase
+                .from('reply_examples')
+                .select('comment_text, reply_text')
+                .order('created_at', { ascending: false })
+                .limit(10);
+
+            if (recentReplies && recentReplies.length > 0) {
+                examples = "Exemplos do meu estilo de resposta:\n" +
+                    recentReplies.map(r => `Comentário: "${r.comment_text}"\nMinha Resposta: "${r.reply_text}"`).join("\n---\n");
+            }
+        } catch (e) {
+            this.logger.warn("Could not fetch reply examples for few-shot learning", e);
+        }
 
         let styleInstruction = "";
         switch (style) {
@@ -39,40 +53,45 @@ export class CommentsService {
         }
 
         const prompt = `
-            Você é um criador de conteúdo do YouTube respondendo comentários.
+            Você é um criador de conteúdo do YouTube (eu, o dono do canal).
+            Sua tarefa é responder a um comentário de um inscrito como SE FOSSE EU.
+
+            CONTEXTO SOBRE MIM (IMPORTANTE):
+            - Eu uso gírias moderadas como "Tmj, mano!", "Valeu demais!", "Fala [Nome], beleza?".
+            - Eu sou atencioso, mas natural. Não pareço um robô corporativo.
+            - Eu cito o nome da pessoa sempre que possível no início. Ex: "Fala, Pedro!".
             
-            Contexto:
-            - Comentário do inscrito: "${commentText}"
-            - Título do Vídeo (se houver): "${videoTitle || 'N/A'}"
+            ${examples ? `Abaixo estão exemplos REAIS de como eu respondo. COPIE MEU TOM E ESTILO:\n${examples}\n\nAgora, responda este novo comentário seguindo o mesmo estilo:` : "Responda de forma natural e engajada."}
+
+            NOVO COMENTÁRIO: "${commentText}"
+            TÍTULO DO VÍDEO: "${videoTitle || 'N/A'}"
             
-            Sua tarefa:
-            - Escreva uma resposta em Português (Brasil).
-            - Estilo: ${styleInstruction}
-            - Evite ser repetitivo.
-            - Resposta curta (máximo 2-3 frases).
+            INSTRUÇÃO DE ESTILO ADICIONAL: ${styleInstruction}
             
-            Responda apenas com o texto da resposta.
+            REGRAS:
+            - Responda apenas com o texto da resposta.
+            - Máximo 2-3 frases.
+            - Se o comentário for um elogio simples, agradeça com "Valeu pelo apoio!" ou similar.
+            - Use emojis com moderação, se fizer sentido no meu estilo.
         `;
 
         try {
-            // We use the OpenAI service directly. Assuming it exposes the client or a method we can reuse.
-            // Since OpenaiService has a specific 'generateEmail' method, we might need to use its internal client if public, 
-            // or add a generic method. 
-            // Checking OpenaiService... it has a private 'openai' client. 
-            // We should ideally add a generic 'chatCompletion' method to OpenaiService, but for now let's hack it 
-            // or assume we can add it. 
-            // Actually, let's look at OpenaiService again. It has generateEmail, generateDescription, transcribeAudio, generateSlug. 
-            // None are generic. I will add a generic text generation method to OpenaiService later. 
-            // For now, I will use a direct call if I can access the client, OR I will modify OpenaiService.
-            // Let's modify OpenaiService first to keep it clean.
-
-            // Wait, I can't modify OpenaiService in this tool call. 
-            // I'll assume usage of a new method 'generateText' that I will add in the next step.
             return await this.openaiService.generateText(prompt);
-
         } catch (error) {
             this.logger.error('Error generating AI reply', error);
             throw new HttpException('Failed to generate reply', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    async learnReply(commentText: string, replyText: string) {
+        if (!commentText || !replyText) return;
+
+        const { error } = await this.supabase
+            .from('reply_examples')
+            .insert([{ comment_text: commentText, reply_text: replyText }]);
+
+        if (error) {
+            this.logger.error('Error saving reply example for learning', error);
         }
     }
 

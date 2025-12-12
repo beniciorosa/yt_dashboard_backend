@@ -24,4 +24,9 @@ export class CommentsController {
     async deleteQuickReply(@Param('id') id: string) {
         return await this.commentsService.deleteQuickReply(id);
     }
+
+    @Post('learn')
+    async learnReply(@Body() body: { commentText: string, replyText: string }) {
+        return await this.commentsService.learnReply(body.commentText, body.replyText);
+    }
 }
