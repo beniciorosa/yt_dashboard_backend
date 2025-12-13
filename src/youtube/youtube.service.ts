@@ -85,9 +85,11 @@ export class YoutubeService {
                 jsonBody = rawBody; // Fallback to text
             }
 
+
             if (!response.ok) {
-                console.error(`[ProxyAction] Upstream Error (${status}):`, rawBody);
-                throw new Error(JSON.stringify(jsonBody) || `YouTube API Error ${status}`);
+                console.error(`[ProxyAction] Upstream Error (${status}) RawBody:`, rawBody);
+                const errorMessage = jsonBody ? JSON.stringify(jsonBody) : (rawBody || `YouTube API Error ${status}`);
+                throw new Error(errorMessage);
             }
 
             if (status === 204) {
