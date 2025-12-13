@@ -48,15 +48,27 @@ export class YoutubeService {
 
         console.log(`[ProxyAction] ${method} ${url.toString()}`);
 
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+        };
+
+        const hasBody = data !== undefined && data !== null && method !== 'GET' && method !== 'HEAD';
+
+        if (hasBody) {
+            headers['Content-Type'] = 'application/json';
+        } else if (method === 'POST') {
+            // Essential for endpoints like comments/rate that are POST but empty body
+            headers['Content-Length'] = '0';
+        }
+
+        console.log(`[ProxyAction] ${method} ${url.toString()} | HasBody: ${hasBody}`);
+
         try {
             const response = await fetch(url.toString(), {
                 method: method,
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: data ? JSON.stringify(data) : undefined
+                headers: headers,
+                body: hasBody ? JSON.stringify(data) : undefined
             });
 
             const status = response.status;
