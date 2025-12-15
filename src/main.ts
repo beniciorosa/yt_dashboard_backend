@@ -8,6 +8,9 @@ async function bootstrap() {
   console.log('DEBUG: SUPABASE_URL:', process.env.SUPABASE_URL);
   console.log('DEBUG: ConfigService URL:', app.get(ConfigService).get('SUPABASE_URL'));
 
+  // Enable Global Prefix
+  app.setGlobalPrefix('api');
+
   // Enable CORS
   app.enableCors({
     origin: '*', // Allow all origins for now to fix the issue
