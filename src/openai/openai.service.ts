@@ -300,4 +300,85 @@ export class OpenaiService {
             throw new Error("Failed to generate text");
         }
     }
+    async analyzeCompetitorGrowth(data: any) {
+        const { competitorStats, topVideos, recentVideos, myChannelStats, isMyChannel } = data;
+
+        const roleDescription = isMyChannel
+            ? "Você é um CONSULTOR DE YOUTUBE DE ELITE contratado para auditar este canal CRITICAMENTE."
+            : "Você é um ESPIÃO E ESTRATEGISTA DE YOUTUBE focado em Engenharia Reversa de concorrentes.";
+
+        const prompt = `
+            ${roleDescription}
+            
+            OBJETIVO:
+            Criar um relatório de inteligência estratégico e acionável. Não use clichês. Quero insights profundos baseados nos dados.
+
+            DADOS DO CANAL ALVO:
+            - Nome: ${competitorStats.channelName}
+            - Inscritos: ${competitorStats.subscriberCount}
+            - Views Totais: ${competitorStats.viewCount}
+            - Vídeos: ${competitorStats.videoCount}
+            ${myChannelStats ? `- MEU CANAL (Para Comparação): ${myChannelStats.channelName} (${myChannelStats.subscriberCount} subs)` : ''}
+
+            TOP VÍDEOS (O que funciona):
+            ${JSON.stringify(topVideos.slice(0, 5), null, 2)}
+
+            VÍDEOS RECENTES (O que estão testando):
+            ${JSON.stringify(recentVideos.slice(0, 5), null, 2)}
+
+            INSTRUÇÕES DE ANÁLISE (THINKING PROCESS):
+            1.  **Padrões de Sucesso:** Analise os Top Vídeos. O que eles têm em comum? (Títulos, Temas, Thumbnails implícitas, Duração).
+            2.  **Análise de Outliers:** Identifique vídeos recentes que performaram muito acima da média (se houver). Por que explodiram?
+            3.  **Engenharia Reversa (Se Competidor):** O que esse canal faz que eu DEVERIA copiar ou adaptar? Onde estão as brechas que ele não atende?
+            4.  **Auditoria Crítica (Se Meu Canal):** O que está matando a retenção ou o clique? O que eu preciso parar de fazer imediatamente?
+
+            FORMATO DE SAÍDA (MARKDOWN):
+            
+            ## 📊 Diagnóstico Estratégico: [Nome do Canal]
+            
+            ### 🏆 O Que Está Funcionando (Padrões de Viralidade)
+            *   **Temas Vencedores:** [Análise dos Top Vídeos]
+            *   **Estrutura de Títulos:** [Padrões de Copywriting detectados]
+            *   **Fator X:** [O diferencial único deste canal]
+
+            ### 🚀 Oportunidades & Brechas
+            *   [Insight 1]
+            *   [Insight 2]
+            
+            ### 💡 Plano de Ação Imediato
+            1.  **Ação 1:** [O que fazer]
+            2.  **Ação 2:** [O que fazer]
+            3.  **Ação 3:** [O que fazer]
+
+            (Seja direto, use negrito para ênfase, sem enrolação. Fale como um estrategista sênior.)
+        `;
+
+        try {
+            console.log("Starting AI Analysis with o1-preview...");
+            const completion = await this.openai.chat.completions.create({
+                messages: [
+                    { role: 'user', content: prompt }
+                ],
+                model: 'o1-preview',
+            });
+
+            return completion.choices[0].message.content || "";
+        } catch (error: any) {
+            console.warn("o1-preview failed or not available, falling back to gpt-4o. Error:", error.message);
+            // Fallback to GPT-4o
+            try {
+                const completion = await this.openai.chat.completions.create({
+                    messages: [
+                        { role: 'system', content: "Você é um especialista em YouTube." },
+                        { role: 'user', content: prompt }
+                    ],
+                    model: 'gpt-4o',
+                });
+                return completion.choices[0].message.content || "";
+            } catch (fallbackError) {
+                console.error("Error generating analysis with OpenAI:", fallbackError);
+                throw new Error("Failed to generate analysis");
+            }
+        }
+    }
 }

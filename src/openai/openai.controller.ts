@@ -20,4 +20,8 @@ export class OpenaiController {
     async transcribeAudio(@Body() body: { fileUrl: string }) {
         return this.openaiService.transcribeAudio(body.fileUrl);
     }
+    @Post('analyze-competitor')
+    async analyzeCompetitor(@Body() body: any) {
+        return this.openaiService.analyzeCompetitorGrowth(body);
+    }
 }
