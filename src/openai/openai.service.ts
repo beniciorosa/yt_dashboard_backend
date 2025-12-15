@@ -109,6 +109,7 @@ export class OpenaiService {
       
       Regras para "hashtags":
       1. Exatamente 3 hashtags de alta busca no nicho.
+      2. FORMATO OBRIGATÓRIO: Separadas apenas por ESPAÇO. NÃO use vírgulas. Exemplo: #Tag1 #Tag2 #Tag3
       
       Regras para "description_rationale" e "chapters_rationale" (THINKING PROCESS):
       1. "description_rationale": Explique COMO a descrição criada atende ao Algoritmo do YouTube.
@@ -189,7 +190,7 @@ export class OpenaiService {
             return {
                 intro: Array.isArray(jsonResponse.intro) ? jsonResponse.intro.join('\n\n') : (jsonResponse.intro || ""),
                 chapters: cleanChapters,
-                hashtags: jsonResponse.hashtags || "",
+                hashtags: (jsonResponse.hashtags || "").replace(/,/g, ' ').replace(/\s+/g, ' ').trim(),
                 description_rationale: jsonResponse.description_rationale || "Sem racional gerado.",
                 chapters_rationale: jsonResponse.chapters_rationale || "Sem racional gerado."
             };
