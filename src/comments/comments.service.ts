@@ -92,16 +92,35 @@ export class CommentsService {
         }
     }
 
-    async learnReply(commentText: string, replyText: string) {
+    async learnReply(commentText: string, replyText: string, username?: string) {
         if (!commentText || !replyText) return;
 
         const { error } = await this.supabase
             .from('reply_examples')
-            .insert([{ comment_text: commentText, reply_text: replyText }]);
+            .insert([{
+                comment_text: commentText,
+                reply_text: replyText,
+                username: username
+            }]);
 
         if (error) {
             this.logger.error('Error saving reply example for learning', error);
         }
+    }
+
+    async getInteractionCount(username: string): Promise<number> {
+        if (!username) return 0;
+
+        const { count, error } = await this.supabase
+            .from('reply_examples')
+            .select('*', { count: 'exact', head: true })
+            .eq('username', username);
+
+        if (error) {
+            this.logger.error(`Error counting interactions for ${username}`, error);
+            return 0;
+        }
+        return count || 0;
     }
 
     async getQuickReplies() {

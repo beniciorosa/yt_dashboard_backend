@@ -26,7 +26,13 @@ export class CommentsController {
     }
 
     @Post('learn')
-    async learnReply(@Body() body: { commentText: string, replyText: string }) {
-        return await this.commentsService.learnReply(body.commentText, body.replyText);
+    async learnReply(@Body() body: { commentText: string, replyText: string, username?: string }) {
+        return await this.commentsService.learnReply(body.commentText, body.replyText, body.username);
+    }
+
+    @Get('interactions/:username')
+    async getInteractionCount(@Param('username') username: string) {
+        const count = await this.commentsService.getInteractionCount(username);
+        return { count };
     }
 }
