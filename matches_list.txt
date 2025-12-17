@@ -1,0 +1,72 @@
+ID: 51180856098, Name: alexandre , Date: 2025-12-05T17:24:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51276614458, Name: Luis, Date: 2025-12-05T19:00:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51308428693, Name: Diogo Klann, Date: 2025-12-05T18:22:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51330973960, Name: Bruno Lima, Date: 2025-12-05T18:05:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51333481477, Name: Wemerson, Date: 2025-12-06T21:50:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51333734419, Name: Willian, Date: 2025-12-06T00:36:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51334159751, Name: Octavio Camargo, Date: 2025-12-07T12:14:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51336943542, Name: Thiago, Date: 2025-12-06T07:44:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51336961607, Name: Michel , Date: 2025-12-06T14:00:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51337515361, Name: Arthur, Date: 2025-12-05T19:31:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51337946745, Name: Mateus Sousa , Date: 2025-12-07T10:34:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51338521499, Name: Pedro Henrique , Date: 2025-12-06T21:13:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51342983755, Name: Ricardo Pereira Bahia, Date: 2025-12-07T09:58:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51343498673, Name: Jatiniel, Date: 2025-12-05T21:18:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51343854265, Name: Renan, Date: 2025-12-06T12:08:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51344814613, Name: lucas araujo chiullo, Date: 2025-12-06T23:34:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51345663593, Name: Maciel Rodrigues , Date: 2025-12-05T20:24:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51345709672, Name: Nícolas, Date: 2025-12-06T11:39:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51347585902, Name: Ryan Lucas , Date: 2025-12-07T12:48:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51348053892, Name: Nilton Bellei, Date: 2025-12-07T12:27:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51349750040, Name: Antonio Daltuir Costacurta, Date: 2025-12-07T11:25:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51349846062, Name: Fernanda Carvalho Lourenço, Date: 2025-12-06T19:06:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51350270341, Name: Jefferson keruk, Date: 2025-12-07T01:03:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51350940254, Name: Renata Mello , Date: 2025-12-07T13:57:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51351493773, Name: Valdilea da Silva soares, Date: 2025-12-06T19:30:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51351889288, Name: Kayky Augusto , Date: 2025-12-05T20:35:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51354090633, Name: celso, Date: 2025-12-06T15:47:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51354119838, Name: Will, Date: 2025-12-07T00:34:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51354262074, Name: José, Date: 2025-12-06T21:03:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51354731146, Name: Maurício , Date: 2025-12-06T23:31:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51354880263, Name: Caio Brandão, Date: 2025-12-06T21:16:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51355152681, Name: Ezequiel Guerra de Andrade, Date: 2025-12-06T09:10:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51355870219, Name: Ronaldo, Date: 2025-12-07T14:23:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51357891374, Name: Christian Segundo de Melo, Date: 2025-12-07T16:25:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51360133733, Name: Getúlio Gonçalves Neto , Date: 2025-12-06T00:20:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51363682340, Name: GISLENE, Date: 2025-12-05T19:31:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51364148992, Name: Renan, Date: 2025-12-07T04:24:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51366133905, Name: Nilcelio Pinto de Carvalho , Date: 2025-12-06T21:17:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51366196026, Name: Vanderson , Date: 2025-12-07T13:43:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51366215281, Name: Juliano, Date: 2025-12-05T20:30:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51367181323, Name: Viviane Chotte de Oliveira Zanin , Date: 2025-12-06T17:39:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51371465641, Name: VINÍCIUS VIEIRA, Date: 2025-12-06T23:25:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51390933931, Name: Luiz, Date: 2025-12-07T18:31:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51393033330, Name: Bassan Haidar, Date: 2025-12-07T20:28:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51396417843, Name: Helder Ferreira de Oliveira , Date: 2025-12-07T22:50:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51396674191, Name: Natanael, Date: 2025-12-08T10:22:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51429286680, Name: Gilmar Alves, Date: 2025-12-08T08:54:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51434032794, Name: Pablo Lopes Nogueira, Date: 2025-12-08T11:22:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51434247449, Name: Luis Fernando Gomes Pintenho , Date: 2025-12-08T13:19:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51437846023, Name: Fabio Nunes da Silva, Date: 2025-12-08T21:44:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51439240452, Name: Rammirez Batista, Date: 2025-12-08T12:15:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51441129281, Name: Emanuel, Date: 2025-12-08T13:34:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51441925900, Name: Diogo, Date: 2025-12-08T14:48:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51447801983, Name: Alan Motta, Date: 2025-12-08T18:19:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51448641605, Name: MATHEUS, Date: 2025-12-08T18:37:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51450439957, Name: Gabriela Ebertz, Date: 2025-12-08T23:08:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51450483042, Name: LUIZ CARLOS, Date: 2025-12-09T12:36:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51451948937, Name: Gabriel Souza, Date: 2025-12-08T17:59:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51457958200, Name: Omero Pitzalis Neto, Date: 2025-12-08T20:31:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51458232077, Name: KAIO, Date: 2025-12-08T21:25:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51465362794, Name: Marcos, Date: 2025-12-08T22:33:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51494890809, Name: Rawlisson , Date: 2025-12-09T09:52:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51516710807, Name: roque, Date: 2025-12-10T00:52:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51554924966, Name: Murilo Cardoso, Date: 2025-12-09T21:37:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51555676752, Name: Thiago Pereira , Date: 2025-12-09T15:21:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51628812713, Name: Eduardo, Date: 2025-12-11T11:49:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51631693957, Name: Matheus Giovani Baia, Date: 2025-12-10T17:06:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51634633008, Name: RODOLPHO, Date: 2025-12-10T17:58:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51640144026, Name: Jossandro , Date: 2025-12-11T08:15:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51696779276, Name: Jorge Nascimento, Date: 2025-12-11T18:06:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51786523493, Name: Guilherme Adriano Schraiber, Date: 2025-12-12T17:53:00, UTM: yt-051225-meli-acabou-iniciantes
+ID: 51939997054, Name: Uiliam Motta , Date: 2025-12-15T22:48:00, UTM: yt-051225-meli-acabou-iniciantes
