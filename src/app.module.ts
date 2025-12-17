@@ -8,6 +8,7 @@ import { YoutubeModule } from './youtube/youtube.module';
 import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
 import { UtmModule } from './utm/utm.module';
 import { CommentsModule } from './comments/comments.module';
+import { SalesModule } from './sales/sales.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { CommentsModule } from './comments/comments.module';
     ActiveCampaignModule,
     UtmModule,
     CommentsModule,
+    SalesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
