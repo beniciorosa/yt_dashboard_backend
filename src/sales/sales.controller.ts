@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Res, Query } from '@nestjs/common';
 import { SalesService } from './sales.service';
 
 @Controller('sales')
@@ -6,18 +6,18 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) { }
 
   @Get('ranking')
-  getRanking() {
-    return this.salesService.getSalesRanking();
+  getRanking(@Query('period') period?: string) {
+    return this.salesService.getSalesRanking(period);
   }
 
   @Get('summary')
-  getSummary() {
-    return this.salesService.getSalesSummary();
+  getSummary(@Query('period') period?: string) {
+    return this.salesService.getSalesSummary(period);
   }
 
   @Get('dashboard')
-  getDashboardData() {
-    return this.salesService.getDashboardData();
+  getDashboardData(@Query('period') period?: string) {
+    return this.salesService.getDashboardData(period);
   }
 
   @Get('icons/:uf')
@@ -31,7 +31,7 @@ export class SalesController {
   }
 
   @Get(':videoId')
-  getDealsByVideo(@Param('videoId') videoId: string) {
-    return this.salesService.getDealsByVideo(videoId);
+  getDealsByVideo(@Param('videoId') videoId: string, @Query('period') period?: string) {
+    return this.salesService.getDealsByVideo(videoId, period);
   }
 }

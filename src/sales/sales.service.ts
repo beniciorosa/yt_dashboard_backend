@@ -40,8 +40,10 @@ export class SalesService {
     });
   }
 
-  async getSalesRanking(): Promise<SalesRankingItem[]> {
-    this.logger.log('Starting getSalesRanking...');
+  async getSalesRanking(period: string = 'month'): Promise<SalesRankingItem[]> {
+    const isAllPeriod = period === 'all';
+    const { start, end } = this.getPeriodDates(period);
+
     const startTimeManual = Date.now();
 
     // 1. Fetch LINKS first to get relevant UTMs
@@ -84,7 +86,7 @@ export class SalesService {
     while (hasMore) {
       const { data, error } = await this.supabase
         .from('hubspot_negocios')
-        .select('valor, etapa, utm_content, item_linha, data_fechamento')
+        .select('valor, etapa, utm_content, item_linha, data_fechamento, data_criacao')
         .in('utm_content', utmsToQuery)
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -137,7 +139,7 @@ export class SalesService {
       const dealUtm = String(deal.utm_content).trim().toLowerCase();
       const link = utmToLinkMap.get(dealUtm);
 
-      if (!link || !link.video_id) return; // Unlinked deal
+      if (!link || !link.video_id) return;
 
       const videoId = link.video_id;
 
@@ -146,30 +148,39 @@ export class SalesService {
       }
 
       const stats = videoStats.get(videoId)!;
-      stats.deals++;
 
-      // MAPPING: dealstage -> etapa, amount -> valor, products -> item_linha
+      // Filter logic:
+      // Lead: count if data_criacao is within range
+      const creationDate = deal.data_criacao ? new Date(deal.data_criacao) : null;
+      const closingDate = deal.data_fechamento ? new Date(deal.data_fechamento) : null;
+
+      const inCreationRange = isAllPeriod || (creationDate && end && creationDate >= start! && creationDate <= end);
+      const inClosingRange = isAllPeriod || (closingDate && end && closingDate >= start! && closingDate <= end);
+
+      if (inCreationRange || inClosingRange) {
+        stats.deals++;
+      }
+
       const etapa = deal.etapa?.toLowerCase() || '';
       const isWon = etapa.includes('ganho') || etapa.includes('won') || etapa.includes('fechado');
       const isLost = etapa.includes('perdido') || etapa.includes('lost');
 
-      if (isWon) {
+      if (isWon && inClosingRange) {
         stats.won++;
         stats.revenue += Number(deal.valor || 0);
 
-        // Check if won today
-        if (deal.data_fechamento) {
-          const closeDate = new Date(deal.data_fechamento);
+        // Check if won today (always per day, regardless of period filter)
+        if (closingDate) {
           const today = new Date();
           if (
-            closeDate.getDate() === today.getDate() &&
-            closeDate.getMonth() === today.getMonth() &&
-            closeDate.getFullYear() === today.getFullYear()
+            closingDate.getDate() === today.getDate() &&
+            closingDate.getMonth() === today.getMonth() &&
+            closingDate.getFullYear() === today.getFullYear()
           ) {
             stats.wonToday++;
           }
         }
-      } else if (isLost) {
+      } else if (isLost && inClosingRange) {
         stats.lost++;
       }
 
@@ -202,8 +213,8 @@ export class SalesService {
     return ranking.sort((a, b) => b.totalRevenue - a.totalRevenue);
   }
 
-  async getSalesSummary(): Promise<SalesSummary> {
-    const ranking = await this.getSalesRanking();
+  async getSalesSummary(period: string = 'month'): Promise<SalesSummary> {
+    const ranking = await this.getSalesRanking(period);
 
     const totalRevenue = ranking.reduce((acc, item) => acc + item.totalRevenue, 0);
     const totalDeals = ranking.reduce((acc, item) => acc + item.dealsCount, 0);
@@ -217,13 +228,14 @@ export class SalesService {
     };
   }
 
-  async getDashboardData() {
-    const ranking = await this.getSalesRanking();
+  async getDashboardData(period: string = 'month') {
+    const ranking = await this.getSalesRanking(period);
 
     const totalRevenue = ranking.reduce((acc, item) => acc + item.totalRevenue, 0);
     const totalDeals = ranking.reduce((acc, item) => acc + item.dealsCount, 0);
     const totalWon = ranking.reduce((acc, item) => acc + item.wonCount, 0);
 
+    const { start, end } = this.getPeriodDates(period);
     return {
       summary: {
         totalRevenue,
@@ -235,7 +247,58 @@ export class SalesService {
     };
   }
 
-  async getDealsByVideo(videoId: string) {
+  private getPeriodDates(period: string): { start: Date | null, end: Date | null } {
+    const now = new Date();
+    const start = new Date(now);
+    const end = new Date(now);
+
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    switch (period) {
+      case 'today':
+        return { start, end };
+
+      case 'week':
+        // Monday to Sunday
+        const day = start.getDay(); // 0 is Sunday, 1 is Monday...
+        const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+        start.setDate(diff);
+        // End remains Sunday 23:59:59 of current week
+        const sunday = new Date(start);
+        sunday.setDate(start.getDate() + 6);
+        sunday.setHours(23, 59, 59, 999);
+        return { start, end: sunday };
+
+      case 'month':
+        start.setDate(1);
+        const lastDay = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+        lastDay.setHours(23, 59, 59, 999);
+        return { start, end: lastDay };
+
+      case '30days':
+        start.setDate(start.getDate() - 30);
+        return { start, end };
+
+      case '60days':
+        start.setDate(start.getDate() - 60);
+        return { start, end };
+
+      case 'year':
+        start.setMonth(0, 1);
+        const dec31 = new Date(start.getFullYear(), 11, 31);
+        dec31.setHours(23, 59, 59, 999);
+        return { start, end: dec31 };
+
+      case 'all':
+      default:
+        return { start: null, end: null };
+    }
+  }
+
+  async getDealsByVideo(videoId: string, period: string = 'month') {
+    const isAllPeriod = period === 'all';
+    const { start, end } = this.getPeriodDates(period);
     // 1. Fetch video details
     const { data: video } = await this.supabase
       .from('yt_myvideos')
@@ -263,10 +326,22 @@ export class SalesService {
       .from('hubspot_negocios')
       .select('*')
       .in('utm_content', utms)
-      .order('data_fechamento', { ascending: false });
+      .order('data_criacao', { ascending: false });
 
     if (error) throw error;
-    return { video, deals };
+
+    // Filter deals in memory to match ranking logic
+    const filteredDeals = deals.filter(deal => {
+      const creationDate = deal.data_criacao ? new Date(deal.data_criacao) : null;
+      const closingDate = deal.data_fechamento ? new Date(deal.data_fechamento) : null;
+
+      const inCreationRange = isAllPeriod || (creationDate && end && creationDate >= start! && creationDate <= end);
+      const inClosingRange = isAllPeriod || (closingDate && end && closingDate >= start! && closingDate <= end);
+
+      return inCreationRange || inClosingRange;
+    });
+
+    return { video, deals: filteredDeals };
   }
 
   async getIconByUF(uf: string): Promise<string | null> {
