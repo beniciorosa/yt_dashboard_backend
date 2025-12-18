@@ -9,6 +9,7 @@ export interface SalesRankingItem {
   totalRevenue: number;
   dealsCount: number;
   wonCount: number;
+  wonToday: number;
   lostCount: number;
   conversionRate: number;
   products: string[];
@@ -83,7 +84,7 @@ export class SalesService {
     while (hasMore) {
       const { data, error } = await this.supabase
         .from('hubspot_negocios')
-        .select('valor, etapa, utm_content, item_linha') // Select ONLY needed columns
+        .select('valor, etapa, utm_content, item_linha, data_fechamento')
         .in('utm_content', utmsToQuery)
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -125,6 +126,7 @@ export class SalesService {
       revenue: number,
       deals: number,
       won: number,
+      wonToday: number,
       lost: number,
       products: Set<string>
     }>();
@@ -140,7 +142,7 @@ export class SalesService {
       const videoId = link.video_id;
 
       if (!videoStats.has(videoId)) {
-        videoStats.set(videoId, { revenue: 0, deals: 0, won: 0, lost: 0, products: new Set() });
+        videoStats.set(videoId, { revenue: 0, deals: 0, won: 0, wonToday: 0, lost: 0, products: new Set() });
       }
 
       const stats = videoStats.get(videoId)!;
@@ -154,6 +156,19 @@ export class SalesService {
       if (isWon) {
         stats.won++;
         stats.revenue += Number(deal.valor || 0);
+
+        // Check if won today
+        if (deal.data_fechamento) {
+          const closeDate = new Date(deal.data_fechamento);
+          const today = new Date();
+          if (
+            closeDate.getDate() === today.getDate() &&
+            closeDate.getMonth() === today.getMonth() &&
+            closeDate.getFullYear() === today.getFullYear()
+          ) {
+            stats.wonToday++;
+          }
+        }
       } else if (isLost) {
         stats.lost++;
       }
@@ -176,6 +191,7 @@ export class SalesService {
         totalRevenue: stats.revenue,
         dealsCount: stats.deals,
         wonCount: stats.won,
+        wonToday: stats.wonToday,
         lostCount: stats.lost,
         conversionRate: stats.deals > 0 ? (stats.won / stats.deals) * 100 : 0,
         products: Array.from(stats.products)
