@@ -40,21 +40,55 @@ export class SalesService {
   }
 
   async getSalesRanking(): Promise<SalesRankingItem[]> {
-    // 1. Fetch all required data (with pagination for deals)
+    this.logger.log('Starting getSalesRanking...');
+    const startTimeManual = Date.now();
+
+    // 1. Fetch LINKS first to get relevant UTMs
+    const { data: links, error: linksError } = await this.supabase
+      .from('yt_links')
+      .select('*');
+
+    if (linksError) {
+      this.logger.error('Error fetching links', linksError);
+      throw linksError;
+    }
+
+    if (!links || links.length === 0) return [];
+
+    const utmToLinkMap = new Map<string, any>();
+    const utmVariants = new Set<string>();
+
+    links.forEach(link => {
+      if (link.utm_content) {
+        const raw = String(link.utm_content).trim();
+        const lower = raw.toLowerCase();
+        const upper = raw.toUpperCase();
+
+        utmToLinkMap.set(lower, link);
+        utmVariants.add(raw);
+        utmVariants.add(lower);
+        utmVariants.add(upper);
+      }
+    });
+
+    if (utmVariants.size === 0) return [];
+    const utmsToQuery = Array.from(utmVariants);
+
+    // 2. Fetch only REQUIRED DEALS using UTM filter
     let deals: any[] = [];
     const pageSize = 1000;
     let page = 0;
     let hasMore = true;
 
-    // Fetch DEALS with pagination
     while (hasMore) {
       const { data, error } = await this.supabase
         .from('hubspot_negocios')
-        .select('*')
+        .select('valor, etapa, utm_content, item_linha') // Select ONLY needed columns
+        .in('utm_content', utmsToQuery)
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (error) {
-        this.logger.error('Error fetching deals', error);
+        this.logger.error('Error fetching filtered deals', error);
         throw error;
       }
 
@@ -67,34 +101,18 @@ export class SalesService {
       }
     }
 
-    // Fetch LINKS (assuming < 1000 for now, but safer to paginate if huge)
-    const { data: links, error: linksError } = await this.supabase
-      .from('yt_links')
-      .select('*');
+    this.logger.log(`Fetched ${deals.length} deals in ${Date.now() - startTimeManual}ms`);
+    const afterDealsTime = Date.now();
 
-    if (linksError) {
-      this.logger.error('Error fetching links', linksError);
-      throw linksError;
-    }
-
-    // Fetch VIDEOS
+    // 3. Fetch VIDEOS
     const { data: videos, error: videosError } = await this.supabase
       .from('yt_myvideos')
-      .select('*');
+      .select('video_id, title, thumbnail_url'); // Select only needed columns
 
     if (videosError) {
       this.logger.error('Error fetching videos', videosError);
       throw videosError;
     }
-
-    // 2. Map Links by utm_content (Normalized)
-    const utmToLinkMap = new Map<string, any>();
-    links?.forEach(link => {
-      if (link.utm_content) {
-        const key = String(link.utm_content).trim().toLowerCase();
-        utmToLinkMap.set(key, link);
-      }
-    });
 
     // Map: videoId -> video
     const videoMap = new Map<string, any>();
@@ -164,6 +182,7 @@ export class SalesService {
       });
     });
 
+    this.logger.log(`Ranking processed in ${Date.now() - afterDealsTime}ms. Total time: ${Date.now() - startTimeManual}ms`);
     return ranking.sort((a, b) => b.totalRevenue - a.totalRevenue);
   }
 
@@ -182,19 +201,48 @@ export class SalesService {
     };
   }
 
+  async getDashboardData() {
+    const ranking = await this.getSalesRanking();
+
+    const totalRevenue = ranking.reduce((acc, item) => acc + item.totalRevenue, 0);
+    const totalDeals = ranking.reduce((acc, item) => acc + item.dealsCount, 0);
+    const totalWon = ranking.reduce((acc, item) => acc + item.wonCount, 0);
+
+    return {
+      summary: {
+        totalRevenue,
+        totalDeals,
+        totalWon,
+        conversionRate: totalDeals > 0 ? (totalWon / totalDeals) * 100 : 0
+      },
+      ranking
+    };
+  }
+
   async getDealsByVideo(videoId: string) {
-    // Find links for this video
+    // 1. Fetch video details
+    const { data: video } = await this.supabase
+      .from('yt_myvideos')
+      .select('title, thumbnail_url')
+      .eq('video_id', videoId)
+      .single();
+
+    // 2. Find links for this video
     const { data: links } = await this.supabase
       .from('yt_links')
       .select('utm_content')
       .eq('video_id', videoId);
 
-    if (!links || links.length === 0) return [];
+    if (!links || links.length === 0) {
+      return { video, deals: [] };
+    }
 
     const utms = links.map(l => l.utm_content).filter(Boolean);
-    if (utms.length === 0) return [];
+    if (utms.length === 0) {
+      return { video, deals: [] };
+    }
 
-    // Fetch deals for these UTMs
+    // 3. Fetch deals for these UTMs
     const { data: deals, error } = await this.supabase
       .from('hubspot_negocios')
       .select('*')
@@ -202,6 +250,6 @@ export class SalesService {
       .order('data_fechamento', { ascending: false });
 
     if (error) throw error;
-    return deals;
+    return { video, deals };
   }
 }

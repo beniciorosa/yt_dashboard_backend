@@ -15,6 +15,11 @@ export class SalesController {
     return this.salesService.getSalesSummary();
   }
 
+  @Get('dashboard')
+  getDashboardData() {
+    return this.salesService.getDashboardData();
+  }
+
   @Get(':videoId')
   getDealsByVideo(@Param('videoId') videoId: string) {
     return this.salesService.getDealsByVideo(videoId);
