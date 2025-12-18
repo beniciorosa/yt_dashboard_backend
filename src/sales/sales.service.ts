@@ -252,4 +252,20 @@ export class SalesService {
     if (error) throw error;
     return { video, deals };
   }
+
+  async getIconByUF(uf: string): Promise<string | null> {
+    const normalized = uf.toUpperCase();
+    const { data, error } = await this.supabase
+      .from('icons')
+      .select('icon_files(svg_content)')
+      .eq('icon_name', normalized)
+      .maybeSingle();
+
+    if (error || !data) {
+      this.logger.warn(`Icon not found for UF: ${normalized}`);
+      return null;
+    }
+
+    return (data as any).icon_files?.svg_content || null;
+  }
 }

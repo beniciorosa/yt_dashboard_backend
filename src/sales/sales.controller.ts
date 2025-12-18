@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Res } from '@nestjs/common';
 import { SalesService } from './sales.service';
 
 @Controller('sales')
@@ -18,6 +18,16 @@ export class SalesController {
   @Get('dashboard')
   getDashboardData() {
     return this.salesService.getDashboardData();
+  }
+
+  @Get('icons/:uf')
+  async getIcon(@Param('uf') uf: string, @Res() res) {
+    const svg = await this.salesService.getIconByUF(uf);
+    if (!svg) {
+      return res.status(404).send('Icon not found');
+    }
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.send(svg);
   }
 
   @Get(':videoId')
