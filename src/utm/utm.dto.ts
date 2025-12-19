@@ -6,6 +6,8 @@ export class ShortenLinkDto {
     originalURL: string;
     slug: string; // The full slug including prefix
     title: string;
+    video_url?: string;
+    video_id?: string;
 }
 
 export class SaveLinkDto {
@@ -18,4 +20,6 @@ export class SaveLinkDto {
     short_url?: string;
     short_code?: string;
     is_draft: boolean;
+    video_url?: string;
+    video_id?: string;
 }

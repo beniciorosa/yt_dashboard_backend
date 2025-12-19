@@ -27,7 +27,9 @@ export class YoutubeController {
             return await this.youtubeService.proxyAction(body.token, body.method || 'POST', body.endpoint, body.data, body.params);
         } catch (error: any) {
             // Forward the Google API error response if possible
-            throw new HttpException(error.response?.data || error.message, error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR);
+            const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+            const message = error.response?.data || error.message;
+            throw new HttpException(message, status);
         }
     }
 }

@@ -243,14 +243,16 @@ export class OpenaiService {
     async generateSlug(title: string): Promise<string> {
         const prompt = `
             Role: SEO Expert for YouTube.
-            Task: Create a concise URL slug from the video title.
+            Task: Create a concise URL slug using the FIRST keyword(s) of the video title.
             
             STRICT RULES:
-            1. Length: Use EXACTLY 3 or 4 words.
-            2. Content: Extract the core topic/subject. Remove stop words (pt-BR: a, o, de, da, do, com, sem, para, em, no, na).
-            3. Format: lowercase-words-separated-by-hyphens
-            4. No Dates: Do NOT include numbers related to dates.
-            5. Output: Return ONLY the slug string. No markdown, no quotes, no explanations.
+            1. Keywords: ALWAYS use the primary keywords from the START of the title. Do not invent synonyms.
+            2. "Mercado Livre": If the title contains "Mercado Livre", ALWAYS replace it with the word "meli".
+            3. Length: Use exactly 2 or 3 words.
+            4. Stop words: Remove prepositions and common small words (pt-BR: a, o, de, da, do, pra, no, na, com, sem, para, em).
+            5. Format: lowercase-words-separated-by-hyphens.
+            6. No Dates: Do NOT include numbers related to dates.
+            7. Output: Return ONLY the slug string. No markdown, no quotes, no explanations.
 
             Input Title: "${title}"
             Output Slug:
