@@ -19,6 +19,14 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Manual middleware to handle the Private Network Access preflight if needed
+  app.use((req, res, next) => {
+    if (req.headers['access-control-request-private-network']) {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    next();
+  });
+
   await app.listen(process.env.PORT ?? 8080);
 }
 bootstrap();

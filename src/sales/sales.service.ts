@@ -28,8 +28,8 @@ export class SalesService {
   private supabase: SupabaseClient;
 
   constructor(private configService: ConfigService) {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL')?.trim();
+    const supabaseKey = this.configService.get<string>('SUPABASE_KEY')?.trim();
 
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Supabase credentials missing');
@@ -47,16 +47,25 @@ export class SalesService {
     const startTimeManual = Date.now();
 
     // 1. Fetch LINKS first to get relevant UTMs
-    const { data: links, error: linksError } = await this.supabase
-      .from('yt_links')
-      .select('*');
+    let links: any[] = [];
+    try {
+      this.logger.log('Fetching links from yt_links...');
+      const { data, error: linksError } = await this.supabase
+        .from('yt_links')
+        .select('*');
 
-    if (linksError) {
-      this.logger.error('Error fetching links', linksError);
-      throw linksError;
+      if (linksError) throw linksError;
+      links = data || [];
+      this.logger.log(`Found ${links.length} total links in yt_links`);
+    } catch (e: any) {
+      this.logger.error('Error fetching links from Supabase', { message: e.message, code: e.code });
+      return [];
     }
 
-    if (!links || links.length === 0) return [];
+    if (!links || links.length === 0) {
+      this.logger.warn('No links found in yt_links table (or connection failed)');
+      return [];
+    }
 
     const utmToLinkMap = new Map<string, any>();
     const utmVariants = new Set<string>();
@@ -74,47 +83,84 @@ export class SalesService {
       }
     });
 
-    if (utmVariants.size === 0) return [];
+    this.logger.log(`Generated ${utmVariants.size} UTM variants from links`);
+    if (utmVariants.size === 0) {
+      this.logger.warn('No utm_content found in any of the fetched links');
+      return [];
+    }
     const utmsToQuery = Array.from(utmVariants);
+    this.logger.log(`Querying hubspot_negocios for UTMs: ${utmsToQuery.slice(0, 5).join(', ')}${utmsToQuery.length > 5 ? '...' : ''}`);
 
-    // 2. Fetch only REQUIRED DEALS using UTM filter
+    // 2. Fetch only REQUIRED DEALS using UTM filter in clusters to avoid URL length limits
     let deals: any[] = [];
-    const pageSize = 1000;
-    let page = 0;
-    let hasMore = true;
+    const utmChunkSize = 200;
+    const fetchPromises: Promise<any[]>[] = [];
 
-    while (hasMore) {
-      const { data, error } = await this.supabase
-        .from('hubspot_negocios')
-        .select('valor, etapa, utm_content, item_linha, data_fechamento, data_criacao')
-        .in('utm_content', utmsToQuery)
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+    const startISO = start?.toISOString();
+    const endISO = end?.toISOString();
 
-      if (error) {
-        this.logger.error('Error fetching filtered deals', error);
-        throw error;
-      }
+    for (let i = 0; i < utmsToQuery.length; i += utmChunkSize) {
+      const chunk = utmsToQuery.slice(i, i + utmChunkSize);
 
-      if (data && data.length > 0) {
-        deals = deals.concat(data);
-        if (data.length < pageSize) hasMore = false;
-        else page++;
-      } else {
-        hasMore = false;
-      }
+      const fetchChunk = async () => {
+        let chunkDeals: any[] = [];
+        let hasMore = true;
+        let page = 0;
+        const pageSize = 1000;
+
+        while (hasMore) {
+          try {
+            let query = this.supabase
+              .from('hubspot_negocios')
+              .select('valor, etapa, utm_content, item_linha, data_fechamento, data_criacao')
+              .in('utm_content', chunk);
+
+            // Optimization: Filter by date directly in the database
+            if (!isAllPeriod && startISO) {
+              // Filtrar leads que foram criados OU fechados a partir da data de início do período
+              query = query.or(`data_criacao.gte.${startISO},data_fechamento.gte.${startISO}`);
+            }
+
+            const { data, error } = await query.range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+              chunkDeals = chunkDeals.concat(data);
+              if (data.length < pageSize) hasMore = false;
+              else page++;
+            } else {
+              hasMore = false;
+            }
+          } catch (e: any) {
+            this.logger.error('Error fetching filtered deals chunk', { message: e.message, page });
+            hasMore = false;
+          }
+        }
+        return chunkDeals;
+      };
+
+      fetchPromises.push(fetchChunk());
     }
 
-    this.logger.log(`Fetched ${deals.length} deals in ${Date.now() - startTimeManual}ms`);
+    const results = await Promise.all(fetchPromises);
+    deals = results.flat();
+
+    this.logger.log(`Fetched ${deals.length} total deals in parallel using chunks`);
     const afterDealsTime = Date.now();
 
     // 3. Fetch VIDEOS
-    const { data: videos, error: videosError } = await this.supabase
-      .from('yt_myvideos')
-      .select('video_id, title, thumbnail_url'); // Select only needed columns
+    let videos: any[] = [];
+    try {
+      const { data, error: videosError } = await this.supabase
+        .from('yt_myvideos')
+        .select('video_id, title, thumbnail_url');
 
-    if (videosError) {
-      this.logger.error('Error fetching videos', videosError);
-      throw videosError;
+      if (videosError) throw videosError;
+      videos = data || [];
+    } catch (e) {
+      this.logger.error('Error fetching videos from Supabase', e);
+      // Fallback or just empty
     }
 
     // Map: videoId -> video

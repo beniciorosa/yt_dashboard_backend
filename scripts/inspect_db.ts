@@ -7,45 +7,24 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function inspect() {
-    console.log("Inspecting Tables...");
+    console.log("--- Hubspot Negocios Columns ---");
+    const { data, error } = await supabase.from('hubspot_negocios').select('*').limit(1);
+    if (error) {
+        console.log("ERROR:", error.message);
+    } else if (data && data.length > 0) {
+        const keys = Object.keys(data[0]);
+        console.log("TOTAL_KEYS:", keys.length);
+        keys.forEach(k => console.log(`  - ${k}`));
 
-    // Query information_schema (if permissions allow, otherwise try known tables)
-    // Note: Supabase JS client doesn't support querying information_schema easily directly via SDK for some setups, 
-    // but we can try a direct SQL query via 'rpc' if available, or just check the specific tables we care about.
+        console.log("\nSEARCHING_REQUIRED_KEYS:");
+        const required = ['valor', 'etapa', 'utm_content', 'item_linha', 'data_fechamento', 'data_criacao'];
+        required.forEach(r => {
+            console.log(`  [${r}]: ${keys.includes(r) ? 'YES' : 'NO'}`);
+        });
 
-    // Check yt_links
-    console.log("CHECKING_YT_LINKS");
-    const { data: links } = await supabase.from('yt_links').select('*').limit(1);
-    if (links && links.length > 0) {
-        console.log("YT_LINKS_KEYS: " + Object.keys(links[0]).join(","));
     } else {
-        console.log("YT_LINKS_EMPTY_OR_MISSING");
+        console.log("NO DATA");
     }
-
-    // Check hubspot_negocios
-    console.log("CHECKING_HUBSPOT");
-    const { data: hubspot } = await supabase.from('hubspot_negocios').select('*').limit(1);
-    if (hubspot && hubspot.length > 0) {
-        console.log("HUBSPOT_KEYS: " + Object.keys(hubspot[0]).join(","));
-    } else {
-        console.log("HUBSPOT_EMPTY_OR_MISSING");
-    }
-
-    // Check yt_myvideos (or yt_videos)
-    console.log("CHECKING_MYVIDEOS");
-    const { data: myvideos } = await supabase.from('yt_myvideos').select('*').limit(1);
-    if (myvideos && myvideos.length > 0) {
-        console.log("MYVIDEOS_KEYS: " + Object.keys(myvideos[0]).join(","));
-    } else {
-        // Fallback
-        const { data: videos } = await supabase.from('yt_videos').select('*').limit(1);
-        if (videos && videos.length > 0) {
-            console.log("YT_VIDEOS_KEYS: " + Object.keys(videos[0]).join(","));
-        } else {
-            console.log("VIDEOS_EMPTY_OR_MISSING");
-        }
-    }
-
 }
 
 inspect();
