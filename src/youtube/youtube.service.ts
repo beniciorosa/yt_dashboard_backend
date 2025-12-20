@@ -167,6 +167,7 @@ export class YoutubeService {
         if (!videos || videos.length === 0) return { message: 'No videos found in DB' };
 
         const videoIds = videos.map(v => v.video_id);
+        this.logger.log(`Found ${videoIds.length} videos to sync.`);
 
         // Process in batches of 50 (API limit)
         for (let i = 0; i < videoIds.length; i += 50) {
@@ -197,7 +198,7 @@ export class YoutubeService {
         // Update yt_myvideos with summary metrics
         for (const row of rows) {
             const [vid, views, minutes, avgDur, avgPerc, subs, cardImp, cardClick, endClick] = row;
-            await this.supabase.from('yt_myvideos').update({
+            const { error: updateError } = await this.supabase.from('yt_myvideos').update({
                 analytics_views: views,
                 estimated_minutes_watched: minutes,
                 average_view_duration_seconds: avgDur,
@@ -209,14 +210,12 @@ export class YoutubeService {
                 last_updated: new Date().toISOString()
             }).eq('video_id', vid);
 
-            // B. Fetch Retention Curve (per video)
-            // Due to quota/complexity, we usually do this for a single video at a time or top videos.
-            // For now, let's focus on Traffic Sources for the batch.
+            if (updateError) {
+                this.logger.error(`Error updating yt_myvideos for ${vid}: ${updateError.message}`);
+            }
         }
 
-        // C. Fetch Traffic Sources (Simplified for now - can be expanded to Reporting API later)
-        // For a full BI, Reporting API is better (CSV download).
-        // Here we can use Analytics API to get the TOP sources per batch.
+        // C. Fetch Traffic Sources
         await this.syncTrafficSources(videoIds, token);
     }
 
@@ -235,12 +234,16 @@ export class YoutubeService {
                 video_id: vid,
                 source_type: row[0],
                 views: row[1],
-                watch_time_minutes: row[2]
+                watch_time_minutes: row[2],
+                source_detail: '' // Preencher com vazio para evitar erro de NOT NULL se existir
             }));
 
             if (trafficRows.length > 0) {
-                await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid);
-                await this.supabase.from('yt_video_traffic_details').insert(trafficRows);
+                const { error: delError } = await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid);
+                if (delError) this.logger.error(`Error deleting traffic for ${vid}: ${delError.message}`);
+
+                const { error: insError } = await this.supabase.from('yt_video_traffic_details').insert(trafficRows);
+                if (insError) this.logger.error(`Error inserting traffic for ${vid}: ${insError.message}`);
             }
         }
     }

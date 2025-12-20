@@ -5,7 +5,8 @@
  */
 
 const CHANNEL_ID = process.argv[2];
-const BACKEND_URL = 'http://127.0.0.1:8080/api/youtube/sync-detailed';
+// Usando a URL de produção para garantir a conexão, já que o refresh_token está no Supabase
+const BACKEND_URL = 'https://yt-dashboard-backend.vercel.app/api/youtube/sync-detailed';
 
 async function runSync() {
     if (!CHANNEL_ID) {
