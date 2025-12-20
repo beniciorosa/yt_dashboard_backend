@@ -32,4 +32,28 @@ export class YoutubeController {
             throw new HttpException(message, status);
         }
     }
+
+    @Post('save-auth')
+    async saveAuth(@Body() body: { channelId: string; refreshToken: string }) {
+        if (!body.channelId || !body.refreshToken) {
+            throw new HttpException('ChannelId and RefreshToken are required', HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return await this.youtubeService.saveRefreshToken(body.channelId, body.refreshToken);
+        } catch (error: any) {
+            throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Post('sync-detailed')
+    async syncDetailed(@Body() body: { channelId: string }) {
+        if (!body.channelId) {
+            throw new HttpException('ChannelId is required', HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return await this.youtubeService.syncDetailedEngagement(body.channelId);
+        } catch (error: any) {
+            throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 }
