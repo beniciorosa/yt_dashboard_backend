@@ -46,12 +46,12 @@ export class YoutubeController {
     }
 
     @Post('sync-detailed')
-    async syncDetailed(@Body() body: { channelId: string; videoIds?: string[] }) {
+    async syncDetailed(@Body() body: { channelId: string; videoIds?: string[]; includeDeepDive?: boolean }) {
         if (!body.channelId) {
             throw new HttpException('ChannelId is required', HttpStatus.BAD_REQUEST);
         }
         try {
-            return await this.youtubeService.syncDetailedEngagement(body.channelId, body.videoIds);
+            return await this.youtubeService.syncDetailedEngagement(body.channelId, body.videoIds, body.includeDeepDive);
         } catch (error: any) {
             console.error('[SyncDetailed] Error:', error.message);
             throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);

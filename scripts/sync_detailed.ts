@@ -46,13 +46,19 @@ async function runSync() {
     const chunkSize = 20;
     for (let i = 0; i < videoIds.length; i += chunkSize) {
         const chunk = videoIds.slice(i, i + chunkSize);
-        process.stdout.write(`⏳ Sincronizando lote ${Math.floor(i / chunkSize) + 1} de ${Math.ceil(total / chunkSize)} (${i + 1}-${Math.min(i + chunkSize, total)} de ${total})... `);
+        const isFirstBatch = i === 0;
+
+        process.stdout.write(`⏳ Lote ${Math.floor(i / chunkSize) + 1}/${Math.ceil(total / chunkSize)} (${chunk.length} vids${isFirstBatch ? ' + Deep Dive' : ''})... `);
 
         try {
             const response = await fetch(BACKEND_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channelId: CHANNEL_ID, videoIds: chunk })
+                body: JSON.stringify({
+                    channelId: CHANNEL_ID,
+                    videoIds: chunk,
+                    includeDeepDive: isFirstBatch
+                })
             });
 
             if (response.ok) {

@@ -153,12 +153,13 @@ export class YoutubeService {
         return result.access_token;
     }
 
-    async syncDetailedEngagement(channelId: string, specificVideoIds?: string[]) {
+    async syncDetailedEngagement(channelId: string, specificVideoIds?: string[], includeDeepDive = false) {
         this.logger.log(`Starting detailed sync for channel: ${channelId}`);
         const token = await this.refreshAccessToken(channelId);
         const today = new Date().toISOString().split('T')[0];
 
         let videoIds = specificVideoIds;
+        let shouldDeepDive = includeDeepDive;
 
         if (!videoIds) {
             const { data: videos, error } = await this.supabase
@@ -169,9 +170,13 @@ export class YoutubeService {
             if (error) throw error;
             if (!videos || videos.length === 0) return { message: 'No videos found in DB' };
             videoIds = videos.map(v => v.video_id);
+            // Se não passou IDs específicos, assume que quer o deep dive como padrão
+            if (specificVideoIds === undefined && includeDeepDive === undefined) {
+                shouldDeepDive = true;
+            }
         }
 
-        this.logger.log(`Processing ${videoIds.length} videos.`);
+        this.logger.log(`Processing ${videoIds.length} videos. Deep Dive: ${shouldDeepDive}`);
 
         // 1. Tier 1: Process batches of 50 for Health Summary & Traffic Type Aggregates
         for (let i = 0; i < videoIds.length; i += 50) {
@@ -180,16 +185,18 @@ export class YoutubeService {
         }
 
         // 2. Tier 2: Deep Dive for Top Videos (Traffic Details & Retention)
-        const { data: topVideos } = await this.supabase
-            .from('yt_myvideos')
-            .select('video_id, title, view_count')
-            .eq('channel_id', channelId)
-            .order('view_count', { ascending: false })
-            .limit(5);
+        if (shouldDeepDive) {
+            const { data: topVideos } = await this.supabase
+                .from('yt_myvideos')
+                .select('video_id, title, view_count')
+                .eq('channel_id', channelId)
+                .order('view_count', { ascending: false })
+                .limit(5);
 
-        if (topVideos && topVideos.length > 0) {
-            const topIds = topVideos.map(v => v.video_id);
-            await this.processBatchTier2(topIds, token, today);
+            if (topVideos && topVideos.length > 0) {
+                const topIds = topVideos.map(v => v.video_id);
+                await this.processBatchTier2(topIds, token, today);
+            }
         }
 
         return { success: true, processedCount: videoIds.length };
