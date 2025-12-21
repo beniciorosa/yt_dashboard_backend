@@ -199,7 +199,7 @@ export class YoutubeService {
                 this.logger.log(`[Tier2] Found ${topVideos.length} top videos for deep dive.`);
                 const topIds = topVideos.map(v => v.video_id);
                 // Usamos reliableEndDate para garantir que o YouTube tenha tempo de processar os dados detalhados
-                await this.processBatchTier2(topIds, token, reliableEndDate);
+                await this.processBatchTier2(topIds, token, reliableEndDate, channelId);
             } else {
                 this.logger.log(`[Tier2] No top videos found with views for deep dive.`);
             }
@@ -272,22 +272,22 @@ export class YoutubeService {
         }
     }
 
-    private async processBatchTier2(videoIds: string[], token: string, today: string) {
-        this.logger.log(`[Tier2] Starting Deep Dive for ${videoIds.length} videos`);
+    private async processBatchTier2(videoIds: string[], token: string, today: string, channelId: string) {
+        this.logger.log(`[Tier2] Starting Deep Dive for ${videoIds.length} videos on channel ${channelId}`);
         const startDate = '2022-01-01'; // Mais seguro para métricas detalhadas
 
         for (const vid of videoIds) {
             const encodedVid = encodeURIComponent(vid);
 
             // A. Retention Curve
-            const retUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${encodedVid}`;
+            const retUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${encodedVid}`;
             const retRes = await fetch(retUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (retRes.ok) {
                 const retData = await retRes.json();
                 const rows = retData.rows || [];
                 this.logger.log(`[Tier2] Retention curve for ${vid}: ${rows.length} rows`);
                 if (rows.length === 0) {
-                    this.logger.log(`[Tier2] No retention curve data found for video ${vid}.`);
+                    this.logger.log(`[Tier2] No retention curve data for ${vid}. Response: ${JSON.stringify(retData)}`);
                 }
                 const retRows = rows.map(r => ({
                     video_id: vid,
@@ -304,14 +304,14 @@ export class YoutubeService {
             }
 
             // B. Search Keywords Detail
-            const detailUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${encodedVid};insightTrafficSourceType==YT_SEARCH`;
+            const detailUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${encodedVid};insightTrafficSourceType==YT_SEARCH`;
             const dRes = await fetch(detailUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (dRes.ok) {
                 const dData = await dRes.json();
                 const rows = dData.rows || [];
                 this.logger.log(`[Tier2] YT_SEARCH details for ${vid}: ${rows.length} rows`);
                 if (rows.length === 0) {
-                    this.logger.log(`[Tier2] No YT_SEARCH details found for video ${vid}.`);
+                    this.logger.log(`[Tier2] No YT_SEARCH details for ${vid}. Response: ${JSON.stringify(dData)}`);
                 }
                 const dRows = rows.slice(0, 15).map(r => ({
                     video_id: vid,
@@ -330,14 +330,14 @@ export class YoutubeService {
             }
 
             // C. Suggested Videos Detail
-            const suggUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${encodedVid};insightTrafficSourceType==RELATED_VIDEO`;
+            const suggUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${encodedVid};insightTrafficSourceType==RELATED_VIDEO`;
             const sRes = await fetch(suggUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (sRes.ok) {
                 const sData = await sRes.json();
                 const rows = sData.rows || [];
                 this.logger.log(`[Tier2] RELATED_VIDEO details for ${vid}: ${rows.length} rows`);
                 if (rows.length === 0) {
-                    this.logger.log(`[Tier2] No RELATED_VIDEO details found for video ${vid}.`);
+                    this.logger.log(`[Tier2] No RELATED_VIDEO details for ${vid}. Response: ${JSON.stringify(sData)}`);
                 }
                 const sRows = rows.slice(0, 15).map(r => ({
                     video_id: vid,
