@@ -164,14 +164,31 @@ export class YoutubeService {
         let shouldDeepDive = includeDeepDive;
 
         if (!videoIds) {
-            const { data: videos, error } = await this.supabase
-                .from('yt_myvideos')
-                .select('video_id')
-                .eq('channel_id', channelId);
+            this.logger.log(`[Discovery] Fetching all videos from uploads playlist for channel: ${channelId}`);
+            // A. Pega o ID da playlist de Uploads
+            const channelRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${channelId}&key=${process.env.YOUTUBE_API_KEY}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const channelData = await channelRes.json();
+            const uploadsId = channelData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
 
-            if (error) throw error;
-            if (!videos || videos.length === 0) return { message: 'No videos found in DB' };
-            videoIds = videos.map(v => v.video_id);
+            if (!uploadsId) throw new Error('Could not find uploads playlist for channel');
+
+            // B. Busca todos os vídeos da playlist
+            videoIds = [];
+            let nextPageToken = '';
+            do {
+                const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=50&key=${process.env.YOUTUBE_API_KEY}${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
+                const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                const data = await res.json();
+                if (data.items) {
+                    videoIds.push(...data.items.map((i: any) => i.snippet.resourceId.videoId));
+                }
+                nextPageToken = data.nextPageToken;
+            } while (nextPageToken);
+
+            this.logger.log(`[Discovery] Found ${videoIds.length} videos in uploads playlist.`);
+
             // Se não passou IDs específicos, assume que quer o deep dive como padrão
             if (specificVideoIds === undefined && includeDeepDive === undefined) {
                 shouldDeepDive = true;
@@ -212,7 +229,33 @@ export class YoutubeService {
         this.logger.log(`[Tier1] Processing batch of ${videoIds.length} videos`);
         const idsStr = videoIds.join(',');
 
-        // A. Health Summary (Batch)
+        // 0. Metadata Sync (Data API) - Igual ao botão do Front
+        const dataUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics,status&id=${idsStr}&key=${process.env.YOUTUBE_API_KEY}`;
+        const dataRes = await fetch(dataUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (dataRes.ok) {
+            const videoData = await dataRes.json();
+            const items = videoData.items || [];
+
+            for (const item of items) {
+                const { error } = await this.supabase.from('yt_myvideos').upsert({
+                    video_id: item.id,
+                    title: item.snippet.title,
+                    description: item.snippet.description,
+                    thumbnail_url: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+                    published_at: item.snippet.publishedAt,
+                    view_count: parseInt(item.statistics.viewCount || '0'),
+                    like_count: parseInt(item.statistics.likeCount || '0'),
+                    comment_count: parseInt(item.statistics.commentCount || '0'),
+                    duration: item.contentDetails.duration,
+                    privacy_status: item.status.privacyStatus,
+                    tags: item.snippet.tags || [],
+                    last_updated: new Date().toISOString()
+                }, { onConflict: 'video_id' });
+                if (error) this.logger.error(`[Tier1] Metadata Upsert error for ${item.id}: ${error.message}`);
+            }
+        }
+
+        // A. Health Summary (Analytics API)
         const metrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,cardImpressions,cardClickRate';
         const url = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=${metrics}&dimensions=video&filters=video==${idsStr}`;
 
@@ -221,9 +264,6 @@ export class YoutubeService {
             const data = await res.json();
             const rows = data.rows || [];
             this.logger.log(`[Tier1] Health summary rows: ${rows.length}`);
-            if (rows.length === 0) {
-                this.logger.log(`[Tier1] No health summary data found for batch.`);
-            }
             for (const row of rows) {
                 const [vid, vws, mins, avgD, avgP, subs, cImp, cClck] = row;
                 const { error } = await this.supabase.from('yt_myvideos').update({

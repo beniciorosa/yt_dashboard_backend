@@ -179,7 +179,8 @@ export class CompetitorsService {
         }
 
         const item = items[0];
-        const todayLocal = new Date().toLocaleDateString('en-CA');
+        // Força o fuso de Brasília para gerar a data correta
+        const todayLocal = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
         const avatarUrl = item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url;
 
@@ -196,7 +197,11 @@ export class CompetitorsService {
 
     private async addSnapshot(competitorId: string, stats: any) {
         const dateStr = stats.date;
-        const currentTime = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+        // Força o fuso de Brasília para o registro do horário
+        const currentTime = new Date().toLocaleTimeString('pt-BR', {
+            hour12: false,
+            timeZone: 'America/Sao_Paulo'
+        });
 
         const { error } = await this.supabase
             .from('yt_video_metrics_daily')
