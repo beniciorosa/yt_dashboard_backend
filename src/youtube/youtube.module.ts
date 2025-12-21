@@ -4,6 +4,7 @@ import { YoutubeService } from './youtube.service';
 
 @Module({
   controllers: [YoutubeController],
-  providers: [YoutubeService]
+  providers: [YoutubeService],
+  exports: [YoutubeService]
 })
-export class YoutubeModule {}
+export class YoutubeModule { }
