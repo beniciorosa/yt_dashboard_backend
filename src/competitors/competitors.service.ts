@@ -46,10 +46,12 @@ export class CompetitorsService {
             const chunk = competitors.slice(i, i + CHUNK_SIZE);
             await Promise.all(chunk.map(async (comp) => {
                 try {
-                    let lookupInput = comp.channelUrl;
+                    let lookupInput = comp.id;
 
                     if (!comp.id.startsWith('UC')) {
-                        if (comp.influencerName && comp.influencerName.length > 2 && !comp.influencerName.includes(' ')) {
+                        if (comp.customUrl && comp.customUrl.startsWith('http')) {
+                            lookupInput = comp.customUrl;
+                        } else if (comp.influencerName && comp.influencerName.length > 2 && !comp.influencerName.includes(' ')) {
                             lookupInput = comp.influencerName;
                         } else {
                             lookupInput = comp.channelName;
@@ -97,7 +99,7 @@ export class CompetitorsService {
                 id: v.id,
                 channelName: v.title || 'Sem Nome',
                 influencerName: influencer,
-                channelUrl: v.thumbnail_url || '',
+                channelUrl: customUrl || v.thumbnail_url || '',
                 avatarUrl: v.thumbnail_url,
                 customUrl: customUrl
             };
