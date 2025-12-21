@@ -183,12 +183,14 @@ export class YoutubeService {
         const today = new Date().toISOString().split('T')[0];
 
         // A. Fetch Analytics (Retenção e Saúde)
-        const metrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,cardImpressions,cardClickRate,endScreenElementClickRate';
+        const metrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,cardImpressions,cardClickRate';
         const url = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=${metrics}&dimensions=video&filters=video==${idsStr}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) {
-            this.logger.error(`Analytics API Error: ${await res.text()}`);
+            const errorText = await res.text();
+            this.logger.error(`Analytics API Error: ${errorText}`);
+            // Se falhar o lote, tentamos continuar o processo para as fontes de tráfego, ou pulamos
             return;
         }
 
@@ -197,7 +199,7 @@ export class YoutubeService {
 
         // Update yt_myvideos with summary metrics
         for (const row of rows) {
-            const [vid, views, minutes, avgDur, avgPerc, subs, cardImp, cardClick, endClick] = row;
+            const [vid, views, minutes, avgDur, avgPerc, subs, cardImp, cardClick] = row;
             const { error: updateError } = await this.supabase.from('yt_myvideos').update({
                 analytics_views: views,
                 estimated_minutes_watched: minutes,
@@ -206,7 +208,7 @@ export class YoutubeService {
                 subscribers_gained: subs,
                 impressions: cardImp,
                 click_through_rate: cardClick,
-                end_screen_ctr: endClick,
+                end_screen_ctr: 0, // Removido por incompatibilidade de métrica no momento
                 last_updated: new Date().toISOString()
             }).eq('video_id', vid);
 
