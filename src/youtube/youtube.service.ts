@@ -203,6 +203,7 @@ export class YoutubeService {
     }
 
     private async processBatchTier1(videoIds: string[], token: string, today: string) {
+        this.logger.log(`[Tier1] Processing batch of ${videoIds.length} videos`);
         const idsStr = videoIds.join(',');
 
         // A. Health Summary (Batch)
@@ -213,10 +214,10 @@ export class YoutubeService {
         if (res.ok) {
             const data = await res.json();
             const rows = data.rows || [];
-
+            this.logger.log(`[Tier1] Health summary rows: ${rows.length}`);
             for (const row of rows) {
                 const [vid, vws, mins, avgD, avgP, subs, cImp, cClck] = row;
-                await this.supabase.from('yt_myvideos').update({
+                const { error } = await this.supabase.from('yt_myvideos').update({
                     analytics_views: vws,
                     estimated_minutes_watched: mins,
                     average_view_duration_seconds: avgD,
@@ -226,7 +227,10 @@ export class YoutubeService {
                     click_through_rate: cClck,
                     last_updated: new Date().toISOString()
                 }).eq('video_id', vid);
+                if (error) this.logger.error(`[Tier1] Update error for ${vid}: ${error.message}`);
             }
+        } else {
+            this.logger.error(`[Tier1] API Error (Health): ${res.status}`);
         }
 
         // B. Traffic Types Aggregate (Batch)
@@ -235,6 +239,7 @@ export class YoutubeService {
         if (tRes.ok) {
             const tData = await tRes.json();
             const tRows = tData.rows || [];
+            this.logger.log(`[Tier1] Traffic source rows: ${tRows.length}`);
             const dbRows = tRows.map(r => ({
                 video_id: r[0],
                 source_type: r[1],
@@ -247,27 +252,36 @@ export class YoutubeService {
                 await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_detail', '');
             }
             if (dbRows.length > 0) {
-                await this.supabase.from('yt_video_traffic_details').insert(dbRows);
+                const { error } = await this.supabase.from('yt_video_traffic_details').insert(dbRows);
+                if (error) this.logger.error(`[Tier1] Insert error (Traffic): ${error.message}`);
             }
+        } else {
+            this.logger.error(`[Tier1] API Error (Traffic): ${tRes.status}`);
         }
     }
 
     private async processBatchTier2(videoIds: string[], token: string, today: string) {
+        this.logger.log(`[Tier2] Starting Deep Dive for ${videoIds.length} videos`);
         for (const vid of videoIds) {
             // A. Retention Curve
             const retUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${vid}`;
             const retRes = await fetch(retUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (retRes.ok) {
                 const retData = await retRes.json();
-                const retRows = (retData.rows || []).map(r => ({
+                const rows = retData.rows || [];
+                this.logger.log(`[Tier2] Retention curve for ${vid}: ${rows.length} rows`);
+                const retRows = rows.map(r => ({
                     video_id: vid,
                     relative_time: parseFloat(r[0]),
                     retention_percentage: parseFloat(r[1]) * 100
                 }));
                 if (retRows.length > 0) {
                     await this.supabase.from('yt_video_retention_curve').delete().eq('video_id', vid);
-                    await this.supabase.from('yt_video_retention_curve').insert(retRows);
+                    const { error } = await this.supabase.from('yt_video_retention_curve').insert(retRows);
+                    if (error) this.logger.error(`[Tier2] DB Error (Retention) for ${vid}: ${error.message}`);
                 }
+            } else {
+                this.logger.error(`[Tier2] API Error (Retention) for ${vid}: ${retRes.status}`);
             }
 
             // B. Search Keywords Detail
@@ -275,7 +289,9 @@ export class YoutubeService {
             const dRes = await fetch(detailUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (dRes.ok) {
                 const dData = await dRes.json();
-                const dRows = (dData.rows || []).slice(0, 15).map(r => ({
+                const rows = dData.rows || [];
+                this.logger.log(`[Tier2] YT_SEARCH details for ${vid}: ${rows.length} rows`);
+                const dRows = rows.slice(0, 15).map(r => ({
                     video_id: vid,
                     source_type: 'YT_SEARCH',
                     source_detail: r[0],
@@ -284,7 +300,8 @@ export class YoutubeService {
                 }));
                 if (dRows.length > 0) {
                     await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'YT_SEARCH').neq('source_detail', '');
-                    await this.supabase.from('yt_video_traffic_details').insert(dRows);
+                    const { error } = await this.supabase.from('yt_video_traffic_details').insert(dRows);
+                    if (error) this.logger.error(`[Tier2] DB Error (Search) for ${vid}: ${error.message}`);
                 }
             }
 
@@ -293,7 +310,9 @@ export class YoutubeService {
             const sRes = await fetch(suggUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (sRes.ok) {
                 const sData = await sRes.json();
-                const sRows = (sData.rows || []).slice(0, 15).map(r => ({
+                const rows = sData.rows || [];
+                this.logger.log(`[Tier2] RELATED_VIDEO details for ${vid}: ${rows.length} rows`);
+                const sRows = rows.slice(0, 15).map(r => ({
                     video_id: vid,
                     source_type: 'RELATED_VIDEO',
                     source_detail: r[0],
@@ -302,7 +321,8 @@ export class YoutubeService {
                 }));
                 if (sRows.length > 0) {
                     await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'RELATED_VIDEO').neq('source_detail', '');
-                    await this.supabase.from('yt_video_traffic_details').insert(sRows);
+                    const { error } = await this.supabase.from('yt_video_traffic_details').insert(sRows);
+                    if (error) this.logger.error(`[Tier2] DB Error (Suggested) for ${vid}: ${error.message}`);
                 }
             }
         }
