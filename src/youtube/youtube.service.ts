@@ -153,99 +153,150 @@ export class YoutubeService {
         return result.access_token;
     }
 
-    async syncDetailedEngagement(channelId: string) {
+    async syncDetailedEngagement(channelId: string, specificVideoIds?: string[]) {
         this.logger.log(`Starting detailed sync for channel: ${channelId}`);
         const token = await this.refreshAccessToken(channelId);
+        const today = new Date().toISOString().split('T')[0];
 
-        // 1. Get all videos from our DB
-        const { data: videos, error } = await this.supabase
-            .from('yt_myvideos')
-            .select('video_id')
-            .eq('channel_id', channelId);
+        let videoIds = specificVideoIds;
 
-        if (error) throw error;
-        if (!videos || videos.length === 0) return { message: 'No videos found in DB' };
+        if (!videoIds) {
+            const { data: videos, error } = await this.supabase
+                .from('yt_myvideos')
+                .select('video_id')
+                .eq('channel_id', channelId);
 
-        const videoIds = videos.map(v => v.video_id);
-        this.logger.log(`Found ${videoIds.length} videos to sync.`);
+            if (error) throw error;
+            if (!videos || videos.length === 0) return { message: 'No videos found in DB' };
+            videoIds = videos.map(v => v.video_id);
+        }
 
-        // Process in batches of 50 (API limit)
+        this.logger.log(`Processing ${videoIds.length} videos.`);
+
+        // 1. Tier 1: Process batches of 50 for Health Summary & Traffic Type Aggregates
         for (let i = 0; i < videoIds.length; i += 50) {
             const batch = videoIds.slice(i, i + 50);
-            await this.processDetailedBatch(batch, token);
+            await this.processBatchTier1(batch, token, today);
+        }
+
+        // 2. Tier 2: Deep Dive for Top Videos (Traffic Details & Retention)
+        const { data: topVideos } = await this.supabase
+            .from('yt_myvideos')
+            .select('video_id, title, view_count')
+            .eq('channel_id', channelId)
+            .order('view_count', { ascending: false })
+            .limit(5);
+
+        if (topVideos && topVideos.length > 0) {
+            const topIds = topVideos.map(v => v.video_id);
+            await this.processBatchTier2(topIds, token, today);
         }
 
         return { success: true, processedCount: videoIds.length };
     }
 
-    private async processDetailedBatch(videoIds: string[], token: string) {
+    private async processBatchTier1(videoIds: string[], token: string, today: string) {
         const idsStr = videoIds.join(',');
-        const today = new Date().toISOString().split('T')[0];
 
-        // A. Fetch Analytics (Retenção e Saúde)
+        // A. Health Summary (Batch)
         const metrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,cardImpressions,cardClickRate';
         const url = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=${metrics}&dimensions=video&filters=video==${idsStr}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) {
-            const errorText = await res.text();
-            this.logger.error(`Analytics API Error: ${errorText}`);
-            // Se falhar o lote, tentamos continuar o processo para as fontes de tráfego, ou pulamos
-            return;
-        }
-
-        const data = await res.json();
-        const rows = data.rows || [];
-
-        // Update yt_myvideos with summary metrics
-        for (const row of rows) {
-            const [vid, views, minutes, avgDur, avgPerc, subs, cardImp, cardClick] = row;
-            const { error: updateError } = await this.supabase.from('yt_myvideos').update({
-                analytics_views: views,
-                estimated_minutes_watched: minutes,
-                average_view_duration_seconds: avgDur,
-                average_view_percentage: avgPerc,
-                subscribers_gained: subs,
-                impressions: cardImp,
-                click_through_rate: cardClick,
-                end_screen_ctr: 0, // Removido por incompatibilidade de métrica no momento
-                last_updated: new Date().toISOString()
-            }).eq('video_id', vid);
-
-            if (updateError) {
-                this.logger.error(`Error updating yt_myvideos for ${vid}: ${updateError.message}`);
-            }
-        }
-
-        // C. Fetch Traffic Sources
-        await this.syncTrafficSources(videoIds, token);
-    }
-
-    private async syncTrafficSources(videoIds: string[], token: string) {
-        const today = new Date().toISOString().split('T')[0];
-
-        for (const vid of videoIds) {
-            const url = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceType&filters=video==${vid}`;
-            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-            if (!res.ok) continue;
-
+        if (res.ok) {
             const data = await res.json();
             const rows = data.rows || [];
 
-            const trafficRows = rows.map(row => ({
-                video_id: vid,
-                source_type: row[0],
-                views: row[1],
-                watch_time_minutes: row[2],
-                source_detail: '' // Preencher com vazio para evitar erro de NOT NULL se existir
+            for (const row of rows) {
+                const [vid, vws, mins, avgD, avgP, subs, cImp, cClck] = row;
+                await this.supabase.from('yt_myvideos').update({
+                    analytics_views: vws,
+                    estimated_minutes_watched: mins,
+                    average_view_duration_seconds: avgD,
+                    average_view_percentage: avgP,
+                    subscribers_gained: subs,
+                    impressions: cImp,
+                    click_through_rate: cClck,
+                    last_updated: new Date().toISOString()
+                }).eq('video_id', vid);
+            }
+        }
+
+        // B. Traffic Types Aggregate (Batch)
+        const trafficUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=video,insightTrafficSourceType&filters=video==${idsStr}`;
+        const tRes = await fetch(trafficUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (tRes.ok) {
+            const tData = await tRes.json();
+            const tRows = tData.rows || [];
+            const dbRows = tRows.map(r => ({
+                video_id: r[0],
+                source_type: r[1],
+                views: r[2],
+                watch_time_minutes: r[3],
+                source_detail: ''
             }));
 
-            if (trafficRows.length > 0) {
-                const { error: delError } = await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid);
-                if (delError) this.logger.error(`Error deleting traffic for ${vid}: ${delError.message}`);
+            for (const vid of videoIds) {
+                await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_detail', '');
+            }
+            if (dbRows.length > 0) {
+                await this.supabase.from('yt_video_traffic_details').insert(dbRows);
+            }
+        }
+    }
 
-                const { error: insError } = await this.supabase.from('yt_video_traffic_details').insert(trafficRows);
-                if (insError) this.logger.error(`Error inserting traffic for ${vid}: ${insError.message}`);
+    private async processBatchTier2(videoIds: string[], token: string, today: string) {
+        for (const vid of videoIds) {
+            // A. Retention Curve
+            const retUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${vid}`;
+            const retRes = await fetch(retUrl, { headers: { Authorization: `Bearer ${token}` } });
+            if (retRes.ok) {
+                const retData = await retRes.json();
+                const retRows = (retData.rows || []).map(r => ({
+                    video_id: vid,
+                    relative_time: parseFloat(r[0]),
+                    retention_percentage: parseFloat(r[1]) * 100
+                }));
+                if (retRows.length > 0) {
+                    await this.supabase.from('yt_video_retention_curve').delete().eq('video_id', vid);
+                    await this.supabase.from('yt_video_retention_curve').insert(retRows);
+                }
+            }
+
+            // B. Search Keywords Detail
+            const detailUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${vid};insightTrafficSourceType==YT_SEARCH`;
+            const dRes = await fetch(detailUrl, { headers: { Authorization: `Bearer ${token}` } });
+            if (dRes.ok) {
+                const dData = await dRes.json();
+                const dRows = (dData.rows || []).slice(0, 15).map(r => ({
+                    video_id: vid,
+                    source_type: 'YT_SEARCH',
+                    source_detail: r[0],
+                    views: r[1],
+                    watch_time_minutes: r[2]
+                }));
+                if (dRows.length > 0) {
+                    await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'YT_SEARCH').neq('source_detail', '');
+                    await this.supabase.from('yt_video_traffic_details').insert(dRows);
+                }
+            }
+
+            // C. Suggested Videos Detail
+            const suggUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${vid};insightTrafficSourceType==RELATED_VIDEO`;
+            const sRes = await fetch(suggUrl, { headers: { Authorization: `Bearer ${token}` } });
+            if (sRes.ok) {
+                const sData = await sRes.json();
+                const sRows = (sData.rows || []).slice(0, 15).map(r => ({
+                    video_id: vid,
+                    source_type: 'RELATED_VIDEO',
+                    source_detail: r[0],
+                    views: r[1],
+                    watch_time_minutes: r[2]
+                }));
+                if (sRows.length > 0) {
+                    await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'RELATED_VIDEO').neq('source_detail', '');
+                    await this.supabase.from('yt_video_traffic_details').insert(sRows);
+                }
             }
         }
     }

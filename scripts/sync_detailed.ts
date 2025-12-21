@@ -1,12 +1,15 @@
+import { createClient } from '@supabase/supabase-js';
 
 /**
- * Script para disparar a sincronização detalhada via terminal.
+ * Script para disparar a sincronização detalhada via terminal de forma orquestrada (evita timeout).
  * Uso: npx ts-node scripts/sync_detailed.ts <CHANNEL_ID>
  */
 
 const CHANNEL_ID = process.argv[2];
-// Usando a URL de produção para garantir a conexão, já que o refresh_token está no Supabase
 const BACKEND_URL = 'https://yt-dashboard-backend.vercel.app/api/youtube/sync-detailed';
+
+const SUPABASE_URL = 'https://qytuhvqggsleohxndtqz.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5dHVodnFnZ3NsZW9oeG5kdHF6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzcwODIxNSwiZXhwIjoyMDc5Mjg0MjE1fQ.5liB1hAHSCezVFRQvlIL7rnPfMrVQKv17dte09bXzb4';
 
 async function runSync() {
     if (!CHANNEL_ID) {
@@ -15,26 +18,57 @@ async function runSync() {
         process.exit(1);
     }
 
-    console.log(`🚀 Iniciando sincronização detalhada para o canal: ${CHANNEL_ID}...`);
+    console.log(`🚀 Iniciando orquestração para o canal: ${CHANNEL_ID}...`);
 
-    try {
-        const response = await fetch(BACKEND_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channelId: CHANNEL_ID })
-        });
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        const result = await response.json();
+    // 1. Buscar IDs de vídeos para parcelar o trabalho e evitar timeouts na Vercel
+    const { data: videos, error }: any = await supabase
+        .from('yt_myvideos')
+        .select('video_id')
+        .eq('channel_id', CHANNEL_ID);
 
-        if (response.ok) {
-            console.log('✅ Sincronização concluída com sucesso!');
-            console.log('Resultado:', result);
-        } else {
-            console.error('❌ Erro na sincronização:', result.message || result);
-        }
-    } catch (error: any) {
-        console.error('❌ Falha na conexão com o backend:', error.message);
+    if (error) {
+        console.error('❌ Erro ao buscar vídeos no Supabase:', error.message);
+        process.exit(1);
     }
+
+    if (!videos || videos.length === 0) {
+        console.log('⚠️ Nenhum vídeo encontrado para este canal no banco de dados.');
+        process.exit(0);
+    }
+
+    const videoIds = videos.map((v: any) => v.video_id);
+    const total = videoIds.length;
+    console.log(`📦 Total de vídeos para sincronizar: ${total}`);
+
+    // Processar em pedaços pequenos (ex: 20 por vez) para garantir que termine antes de 10s (Vercel)
+    const chunkSize = 20;
+    for (let i = 0; i < videoIds.length; i += chunkSize) {
+        const chunk = videoIds.slice(i, i + chunkSize);
+        process.stdout.write(`⏳ Sincronizando lote ${Math.floor(i / chunkSize) + 1} de ${Math.ceil(total / chunkSize)} (${i + 1}-${Math.min(i + chunkSize, total)} de ${total})... `);
+
+        try {
+            const response = await fetch(BACKEND_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channelId: CHANNEL_ID, videoIds: chunk })
+            });
+
+            if (response.ok) {
+                console.log('✅');
+            } else {
+                const errText = await response.text();
+                // Limitar log de erro longo
+                const displayErr = errText.length > 60 ? errText.substring(0, 60) + '...' : errText;
+                console.log(`❌ (Erro: ${displayErr})`);
+            }
+        } catch (error: any) {
+            console.log(`❌ (Falha Conexão: ${error.message})`);
+        }
+    }
+
+    console.log('\n🏁 Processo de orquestração concluído!');
 }
 
 runSync();
