@@ -7,6 +7,9 @@ import { SalesModule } from './sales/sales.module';
 import { YoutubeModule } from './youtube/youtube.module';
 import { AuthModule } from './auth/auth.module';
 import { OpenaiModule } from './openai/openai.module';
+import { UtmModule } from './utm/utm.module';
+import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -16,6 +19,9 @@ import { OpenaiModule } from './openai/openai.module';
     YoutubeModule,
     AuthModule,
     OpenaiModule,
+    UtmModule,
+    ActiveCampaignModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
