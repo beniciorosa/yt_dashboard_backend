@@ -158,7 +158,8 @@ export class YoutubeService {
         const token = await this.refreshAccessToken(channelId);
         const today = new Date().toISOString().split('T')[0];
         // YouTube Analytics costuma ter atraso de 2-3 dias para dados detalhados (Retenção/Keywords)
-        const reliableEndDate = new Date(new Date().getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        // Usamos D-4 para garantir que o dado já está consolidado no servidor do Google
+        const reliableEndDate = new Date(new Date().getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         let videoIds = specificVideoIds;
         let shouldDeepDive = includeDeepDive;
@@ -166,7 +167,7 @@ export class YoutubeService {
         if (!videoIds) {
             this.logger.log(`[Discovery] Fetching all videos from uploads playlist for channel: ${channelId}`);
             // A. Pega o ID da playlist de Uploads
-            const channelRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${channelId}&key=${process.env.YOUTUBE_API_KEY}`, {
+            const channelRes = await fetch(`${this.baseUrl}/channels?part=contentDetails&id=${channelId}&key=${this.apiKey}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const channelData = await channelRes.json();
@@ -178,7 +179,7 @@ export class YoutubeService {
             videoIds = [];
             let nextPageToken = '';
             do {
-                const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=50&key=${process.env.YOUTUBE_API_KEY}${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
+                const url = `${this.baseUrl}/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=50&key=${this.apiKey}${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
                 const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
                 const data = await res.json();
                 if (data.items) {
@@ -200,7 +201,7 @@ export class YoutubeService {
         // 1. Tier 1: Process batches of 50 for Health Summary & Traffic Type Aggregates
         for (let i = 0; i < videoIds.length; i += 50) {
             const batch = videoIds.slice(i, i + 50);
-            await this.processBatchTier1(batch, token, today);
+            await this.processBatchTier1(batch, token, today, channelId);
         }
 
         // 2. Tier 2: Deep Dive for Top Videos (Traffic Details & Retention)
@@ -225,12 +226,12 @@ export class YoutubeService {
         return { success: true, processedCount: videoIds.length };
     }
 
-    private async processBatchTier1(videoIds: string[], token: string, today: string) {
+    private async processBatchTier1(videoIds: string[], token: string, today: string, channelId: string) {
         this.logger.log(`[Tier1] Processing batch of ${videoIds.length} videos`);
         const idsStr = videoIds.join(',');
 
         // 0. Metadata Sync (Data API) - Igual ao botão do Front
-        const dataUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics,status&id=${idsStr}&key=${process.env.YOUTUBE_API_KEY}`;
+        const dataUrl = `${this.baseUrl}/videos?part=snippet,contentDetails,statistics,status&id=${idsStr}&key=${this.apiKey}`;
         const dataRes = await fetch(dataUrl, { headers: { Authorization: `Bearer ${token}` } });
         if (dataRes.ok) {
             const videoData = await dataRes.json();
@@ -239,6 +240,7 @@ export class YoutubeService {
             for (const item of items) {
                 const { error } = await this.supabase.from('yt_myvideos').upsert({
                     video_id: item.id,
+                    channel_id: channelId,
                     title: item.snippet.title,
                     description: item.snippet.description,
                     thumbnail_url: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
@@ -257,7 +259,7 @@ export class YoutubeService {
 
         // A. Health Summary (Analytics API)
         const metrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,cardImpressions,cardClickRate';
-        const url = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=${metrics}&dimensions=video&filters=video==${idsStr}`;
+        const url = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${metrics}&dimensions=video&filters=video==${idsStr}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
@@ -283,7 +285,7 @@ export class YoutubeService {
         }
 
         // B. Traffic Types Aggregate (Batch)
-        const trafficUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=2005-01-01&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=video,insightTrafficSourceType&filters=video==${idsStr}`;
+        const trafficUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=video,insightTrafficSourceType&filters=video==${idsStr}`;
         const tRes = await fetch(trafficUrl, { headers: { Authorization: `Bearer ${token}` } });
         if (tRes.ok) {
             const tData = await tRes.json();
@@ -300,10 +302,12 @@ export class YoutubeService {
                 source_detail: ''
             }));
 
-            for (const vid of videoIds) {
-                await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_detail', '');
-            }
             if (dbRows.length > 0) {
+                // Trava de Segurança: Só deletamos o histórico se recebemos dados novos para substituir
+                const vidsWithData = [...new Set(dbRows.map(r => r.video_id))];
+                for (const vid of vidsWithData) {
+                    await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_detail', '');
+                }
                 const { error } = await this.supabase.from('yt_video_traffic_details').insert(dbRows);
                 if (error) this.logger.error(`[Tier1] Insert error (Traffic): ${error.message}`);
             }
@@ -335,6 +339,7 @@ export class YoutubeService {
                     retention_percentage: parseFloat(r[1]) * 100
                 }));
                 if (retRows.length > 0) {
+                    // Trava de Segurança: Só deleta se a API de fato retornou a curva
                     await this.supabase.from('yt_video_retention_curve').delete().eq('video_id', vid);
                     const { error } = await this.supabase.from('yt_video_retention_curve').insert(retRows);
                     if (error) this.logger.error(`[Tier2] DB Error (Retention) for ${vid}: ${error.message}`);
@@ -361,6 +366,7 @@ export class YoutubeService {
                     watch_time_minutes: r[2]
                 }));
                 if (dRows.length > 0) {
+                    // Trava de Segurança: Só deleta se a API retornou detalhes novos
                     await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'YT_SEARCH').neq('source_detail', '');
                     const { error } = await this.supabase.from('yt_video_traffic_details').insert(dRows);
                     if (error) this.logger.error(`[Tier2] DB Error (Search) for ${vid}: ${error.message}`);
