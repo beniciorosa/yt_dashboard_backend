@@ -19,9 +19,14 @@ export class AppController {
   }
 
   @Get('sync-my-videos')
-  async syncMyVideos(@Query('channelId') channelId: string): Promise<any> {
-    // Sincronização completa de vídeos (Metadados + métricas básicas)
-    return await this.youtubeService.syncDetailedEngagement(channelId, undefined, false);
+  async syncMyVideos(
+    @Query('channelId') channelId: string,
+    @Query('deepDive') deepDive?: string
+  ): Promise<any> {
+    // Sincronização de vídeos: Metadados + métricas básicas
+    // O deepDive (Tier 2) busca retenção e detalhes de busca para os top vídeos
+    const shouldDeepDive = deepDive === 'false' ? false : true;
+    return await this.youtubeService.syncDetailedEngagement(channelId, undefined, shouldDeepDive);
   }
 
   @Get('s_card')
