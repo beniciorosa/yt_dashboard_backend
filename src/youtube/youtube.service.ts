@@ -266,9 +266,10 @@ export class YoutubeService {
             const data = await res.json();
             const rows = data.rows || [];
             this.logger.log(`[Tier1] Health summary rows: ${rows.length}`);
-            for (const row of rows) {
+            const updateRows = rows.map(row => {
                 const [vid, vws, mins, avgD, avgP, subs, cImp, cClck] = row;
-                const { error } = await this.supabase.from('yt_myvideos').update({
+                return {
+                    video_id: vid,
                     analytics_views: vws,
                     estimated_minutes_watched: mins,
                     average_view_duration_seconds: avgD,
@@ -277,8 +278,12 @@ export class YoutubeService {
                     impressions: cImp,
                     click_through_rate: cClck,
                     last_updated: new Date().toISOString()
-                }).eq('video_id', vid);
-                if (error) this.logger.error(`[Tier1] Update error for ${vid}: ${error.message}`);
+                };
+            });
+
+            if (updateRows.length > 0) {
+                const { error } = await this.supabase.from('yt_myvideos').upsert(updateRows, { onConflict: 'video_id' });
+                if (error) this.logger.error(`[Tier1] Batch Update error: ${error.message}`);
             }
         } else {
             this.logger.error(`[Tier1] API Error (Health): ${res.status}`);
@@ -320,7 +325,7 @@ export class YoutubeService {
         this.logger.log(`[Tier2] Starting Deep Dive for ${videoIds.length} videos on channel ${channelId}`);
         const startDate = '2022-01-01'; // Mais seguro para métricas detalhadas
 
-        for (const vid of videoIds) {
+        await Promise.all(videoIds.map(async (vid) => {
             const encodedVid = encodeURIComponent(vid);
 
             // A. Retention Curve
@@ -398,6 +403,6 @@ export class YoutubeService {
                     if (error) this.logger.error(`[Tier2] DB Error (Suggested) for ${vid}: ${error.message}`);
                 }
             }
-        }
+        }));
     }
 }
