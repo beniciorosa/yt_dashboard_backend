@@ -15,7 +15,10 @@ export class OpenaiService {
             console.warn('OPENAI_API_KEY not found in environment variables');
         } else {
             apiKey = apiKey.trim();
-            console.log(`OpenAI API Key loaded. Length: ${apiKey.length}, Starts with: ${apiKey.substring(0, 7)}..., Ends with: ...${apiKey.substring(apiKey.length - 4)}`);
+            console.log('--- OpenAI Configuration ---');
+            console.log(`OpenAI API Key loaded successfully. Length: ${apiKey.length}`);
+            console.log(`Starts with: ${apiKey.substring(0, 7)}...`);
+            console.log('---------------------------');
         }
 
         this.openai = new OpenAI({
