@@ -270,6 +270,7 @@ export class YoutubeService {
                 const [vid, vws, mins, avgD, avgP, subs, cImp, cClck] = row;
                 return {
                     video_id: vid,
+                    channel_id: channelId, // Adicionando o canal para satisfazer a restrição NOT NULL
                     analytics_views: vws,
                     estimated_minutes_watched: mins,
                     average_view_duration_seconds: avgD,
