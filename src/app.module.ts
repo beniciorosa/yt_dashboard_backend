@@ -6,6 +6,7 @@ import { CompetitorsModule } from './competitors/competitors.module';
 import { SalesModule } from './sales/sales.module';
 import { YoutubeModule } from './youtube/youtube.module';
 import { AuthModule } from './auth/auth.module';
+import { OpenaiModule } from './openai/openai.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AuthModule } from './auth/auth.module';
     SalesModule,
     YoutubeModule,
     AuthModule,
+    OpenaiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
