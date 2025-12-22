@@ -3,26 +3,17 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CompetitorsModule } from './competitors/competitors.module';
-import { OpenaiModule } from './openai/openai.module';
-import { YoutubeModule } from './youtube/youtube.module';
-import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
-import { UtmModule } from './utm/utm.module';
-import { CommentsModule } from './comments/comments.module';
 import { SalesModule } from './sales/sales.module';
+import { YoutubeModule } from './youtube/youtube.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: ['.env.local', '.env.production', '.env'],
-    }),
+    ConfigModule.forRoot({ isGlobal: true }),
     CompetitorsModule,
-    OpenaiModule,
-    YoutubeModule,
-    ActiveCampaignModule,
-    UtmModule,
-    CommentsModule,
     SalesModule,
+    YoutubeModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
