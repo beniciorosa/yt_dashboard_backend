@@ -355,13 +355,13 @@ export class YoutubeService {
 
     private async processBatchTier2(videoIds: string[], token: string, today: string, channelId: string) {
         this.logger.log(`[Tier2] Starting Deep Dive for ${videoIds.length} videos on channel ${channelId}`);
-        const startDate = '2022-01-01'; // Mais seguro para métricas detalhadas
+        const startDate = '2005-01-01'; // Ampla data para garantir dados de vídeos antigos
 
         await Promise.all(videoIds.map(async (vid) => {
             const encodedVid = encodeURIComponent(vid);
 
             // A. Retention Curve
-            const retUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${encodedVid}`;
+            const retUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${vid}`;
             const retRes = await fetch(retUrl, { headers: { Authorization: `Bearer ${token}` } });
 
             if (retRes.ok) {
@@ -391,7 +391,7 @@ export class YoutubeService {
             }
 
             // B. Search Keywords Detail
-            const detailUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${encodedVid};insightTrafficSourceType==YT_SEARCH`;
+            const detailUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${vid};insightTrafficSourceType==YT_SEARCH`;
             const dRes = await fetch(detailUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (dRes.ok) {
                 const dData = await dRes.json();
@@ -416,7 +416,7 @@ export class YoutubeService {
             }
 
             // C. Suggested Videos Detail
-            const suggUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${encodedVid};insightTrafficSourceType==RELATED_VIDEO`;
+            const suggUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceDetail&filters=video==${vid};insightTrafficSourceType==RELATED_VIDEO`;
             const sRes = await fetch(suggUrl, { headers: { Authorization: `Bearer ${token}` } });
             if (sRes.ok) {
                 const sData = await sRes.json();
