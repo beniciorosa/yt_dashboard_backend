@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, HttpException, HttpStatus } from '@nestjs/common';
 import { YoutubeService } from './youtube.service';
 
 @Controller('youtube')
@@ -71,7 +71,7 @@ export class YoutubeController {
     }
 
     @Get('video-details/:videoId')
-    async getVideoDetails(@Query('videoId') videoId: string) {
+    async getVideoDetails(@Param('videoId') videoId: string) {
         if (!videoId) {
             throw new HttpException('VideoId is required', HttpStatus.BAD_REQUEST);
         }

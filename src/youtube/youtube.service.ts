@@ -272,13 +272,35 @@ export class YoutubeService {
         const metricsStr = 'views,estimatedMinutesWatched,estimatedRevenue,averageViewDuration,averageViewPercentage,subscribersGained,impressions,ctr,engagedViews,endScreenElementClickThroughRate';
         const url = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${metricsStr}&dimensions=video&filters=video==${idsStr}`;
 
-        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.ok) {
-            const data = await res.json();
+        let response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        let hasRevenue = true;
+
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            // 403 (Forbidden) ou 400 (Bad Request) geralmente indicam falta de permissão para revenue
+            if (response.status === 403 || response.status === 400) {
+                this.logger.warn(`[Tier1] Analytics error (${response.status}), retrying without revenue...`);
+                const fallbackMetrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,impressions,ctr,engagedViews,endScreenElementClickThroughRate';
+                const fallbackUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${fallbackMetrics}&dimensions=video&filters=video==${idsStr}`;
+                response = await fetch(fallbackUrl, { headers: { Authorization: `Bearer ${token}` } });
+                hasRevenue = false;
+            }
+        }
+
+        if (response.ok) {
+            const data = await response.json();
             const rows = data.rows || [];
-            this.logger.log(`[Tier1] Health summary rows: ${rows.length}`);
+            this.logger.log(`[Tier1] Health summary rows: ${rows.length} (hasRevenue: ${hasRevenue})`);
+
             for (const row of rows) {
-                const [vid, vws, mins, rev, avgD, avgP, subs, imp, ctr, engV, esc] = row;
+                let vid: string, vws: number, mins: number, rev: number = 0, avgD: number, avgP: number, subs: number, imp: number, ctr: number, engV: number, esc: number;
+
+                if (hasRevenue) {
+                    [vid, vws, mins, rev, avgD, avgP, subs, imp, ctr, engV, esc] = row;
+                } else {
+                    [vid, vws, mins, avgD, avgP, subs, imp, ctr, engV, esc] = row;
+                }
+
                 const existing = videoMap.get(vid) || { video_id: vid, channel_id: channelId };
                 videoMap.set(vid, {
                     ...existing,
