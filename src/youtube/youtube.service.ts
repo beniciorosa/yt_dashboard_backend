@@ -230,7 +230,9 @@ export class YoutubeService {
         this.logger.log(`[Tier1] Processing batch of ${videoIds.length} videos`);
         const idsStr = videoIds.join(',');
 
-        // 0. Metadata Sync (Data API) - Igual ao botão do Front
+        const videoMap = new Map<string, any>();
+
+        // 0. Metadata Sync (Data API)
         const dataUrl = `${this.baseUrl}/videos?part=snippet,contentDetails,statistics,status&id=${idsStr}&key=${this.apiKey}`;
         const dataRes = await fetch(dataUrl, { headers: { Authorization: `Bearer ${token}` } });
         if (dataRes.ok) {
@@ -238,7 +240,7 @@ export class YoutubeService {
             const items = videoData.items || [];
 
             for (const item of items) {
-                const { error } = await this.supabase.from('yt_myvideos').upsert({
+                videoMap.set(item.id, {
                     video_id: item.id,
                     channel_id: channelId,
                     title: item.snippet.title,
@@ -252,42 +254,62 @@ export class YoutubeService {
                     privacy_status: item.status.privacyStatus,
                     tags: item.snippet.tags || [],
                     last_updated: new Date().toISOString()
-                }, { onConflict: 'video_id' });
-                if (error) this.logger.error(`[Tier1] Metadata Upsert error for ${item.id}: ${error.message}`);
+                });
             }
         }
 
         // A. Health Summary (Analytics API)
-        const metrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,cardImpressions,cardClickRate';
-        const url = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${metrics}&dimensions=video&filters=video==${idsStr}`;
+        // Buscamos o set completo de métricas que a tabela yt_myvideos espera
+        const metricsStr = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,impressions,ctr,engagedViews,endScreenElementClickThroughRate';
+        const url = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${metricsStr}&dimensions=video&filters=video==${idsStr}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
             const data = await res.json();
             const rows = data.rows || [];
             this.logger.log(`[Tier1] Health summary rows: ${rows.length}`);
-            const updateRows = rows.map(row => {
-                const [vid, vws, mins, avgD, avgP, subs, cImp, cClck] = row;
-                return {
-                    video_id: vid,
-                    channel_id: channelId, // Adicionando o canal para satisfazer a restrição NOT NULL
-                    analytics_views: vws,
-                    estimated_minutes_watched: mins,
-                    average_view_duration_seconds: avgD,
-                    average_view_percentage: avgP,
-                    subscribers_gained: subs,
-                    impressions: cImp,
-                    click_through_rate: cClck,
+            for (const row of rows) {
+                const [vid, vws, mins, avgD, avgP, subs, imp, ctr, engV, esc] = row;
+                const existing = videoMap.get(vid) || { video_id: vid, channel_id: channelId };
+                videoMap.set(vid, {
+                    ...existing,
+                    analytics_views: vws || 0,
+                    estimated_minutes_watched: mins || 0,
+                    average_view_duration_seconds: avgD || 0,
+                    average_view_duration: avgD || 0, // Preenchendo as duas variações do banco
+                    average_view_percentage: avgP || 0,
+                    subscribers_gained: subs || 0,
+                    impressions: imp || 0,
+                    click_through_rate: ctr || 0,
+                    engaged_views: engV || 0,
+                    end_screen_ctr: (esc || 0) * 100, // Geralmente vem em decimal (0.05)
                     last_updated: new Date().toISOString()
-                };
-            });
-
-            if (updateRows.length > 0) {
-                const { error } = await this.supabase.from('yt_myvideos').upsert(updateRows, { onConflict: 'video_id' });
-                if (error) this.logger.error(`[Tier1] Batch Update error: ${error.message}`);
+                });
             }
-        } else {
-            this.logger.error(`[Tier1] API Error (Health): ${res.status}`);
+        }
+
+        // Garantir que vídeos sem analytics tenham defaults (evita NOT NULL errors)
+        for (const [vid, video] of videoMap.entries()) {
+            videoMap.set(vid, {
+                analytics_views: 0,
+                estimated_minutes_watched: 0,
+                average_view_duration_seconds: 0,
+                average_view_duration: 0,
+                average_view_percentage: 0,
+                subscribers_gained: 0,
+                impressions: 0,
+                click_through_rate: 0,
+                engaged_views: 0,
+                end_screen_ctr: 0,
+                ...video
+            });
+        }
+
+        // Final Batch Upsert for yt_myvideos
+        const finalRows = Array.from(videoMap.values());
+        if (finalRows.length > 0) {
+            const { error } = await this.supabase.from('yt_myvideos').upsert(finalRows, { onConflict: 'video_id' });
+            if (error) this.logger.error(`[Tier1] Batch Upsert error: ${error.message}`);
         }
 
         // B. Traffic Types Aggregate (Batch)
