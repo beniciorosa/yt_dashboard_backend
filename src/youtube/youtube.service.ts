@@ -267,9 +267,9 @@ export class YoutubeService {
             }
         }
 
-        // A. Health Summary (Analytics API)
+        // B. Health Summary (Analytics API)
         // Buscamos o set completo de métricas que a tabela yt_myvideos espera
-        const metricsStr = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,impressions,ctr,engagedViews,endScreenElementClickThroughRate';
+        const metricsStr = 'views,estimatedMinutesWatched,estimatedRevenue,averageViewDuration,averageViewPercentage,subscribersGained,impressions,ctr,engagedViews,endScreenElementClickThroughRate';
         const url = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${metricsStr}&dimensions=video&filters=video==${idsStr}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -278,20 +278,21 @@ export class YoutubeService {
             const rows = data.rows || [];
             this.logger.log(`[Tier1] Health summary rows: ${rows.length}`);
             for (const row of rows) {
-                const [vid, vws, mins, avgD, avgP, subs, imp, ctr, engV, esc] = row;
+                const [vid, vws, mins, rev, avgD, avgP, subs, imp, ctr, engV, esc] = row;
                 const existing = videoMap.get(vid) || { video_id: vid, channel_id: channelId };
                 videoMap.set(vid, {
                     ...existing,
                     analytics_views: vws || 0,
                     estimated_minutes_watched: mins || 0,
+                    estimated_revenue: rev || 0,
                     average_view_duration_seconds: avgD || 0,
-                    average_view_duration: avgD || 0, // Preenchendo as duas variações do banco
+                    average_view_duration: avgD || 0,
                     average_view_percentage: avgP || 0,
                     subscribers_gained: subs || 0,
                     impressions: imp || 0,
                     click_through_rate: ctr || 0,
                     engaged_views: engV || 0,
-                    end_screen_ctr: (esc || 0) * 100, // Geralmente vem em decimal (0.05)
+                    end_screen_ctr: (esc || 0) * 100,
                     last_updated: new Date().toISOString()
                 });
             }
@@ -302,6 +303,7 @@ export class YoutubeService {
             videoMap.set(vid, {
                 analytics_views: 0,
                 estimated_minutes_watched: 0,
+                estimated_revenue: 0,
                 average_view_duration_seconds: 0,
                 average_view_duration: 0,
                 average_view_percentage: 0,
@@ -460,12 +462,12 @@ export class YoutubeService {
             thumbnail: v.thumbnail_url,
             description: v.description,
             publishedAt: v.published_at,
-            viewCount: v.view_count,
-            likeCount: v.like_count,
-            commentCount: v.comment_count,
-            estimatedRevenue: v.estimated_revenue,
-            estimatedMinutesWatched: v.estimated_minutes_watched,
-            subscribersGained: v.subscribers_gained,
+            viewCount: v.view_count || v.analytics_views || 0,
+            likeCount: v.like_count || 0,
+            commentCount: v.comment_count || 0,
+            estimatedRevenue: v.estimated_revenue || 0,
+            estimatedMinutesWatched: v.estimated_minutes_watched || 0,
+            subscribersGained: v.subscribers_gained || 0,
             privacyStatus: v.privacy_status,
             channelId: v.channel_id,
             duration: v.duration
