@@ -153,7 +153,7 @@ export class YoutubeService {
         return result.access_token;
     }
 
-    async syncDetailedEngagement(channelId: string, specificVideoIds?: string[], includeDeepDive = false) {
+    async syncDetailedEngagement(channelId: string, specificVideoIds?: string[], includeDeepDive = true) {
         this.logger.log(`Starting detailed sync for channel: ${channelId}`);
         const token = await this.refreshAccessToken(channelId);
         const today = new Date().toISOString().split('T')[0];
