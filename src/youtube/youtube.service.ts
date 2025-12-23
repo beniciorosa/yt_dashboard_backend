@@ -247,24 +247,28 @@ export class YoutubeService {
         if (dataRes.ok) {
             const videoData = await dataRes.json();
             const items = videoData.items || [];
+            this.logger.log(`[Tier1] Data API metadata items found: ${items.length}`);
 
             for (const item of items) {
                 videoMap.set(item.id, {
                     video_id: item.id,
                     channel_id: channelId,
-                    title: item.snippet.title,
-                    description: item.snippet.description,
-                    thumbnail_url: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+                    title: item.snippet.title || 'Sem Título',
+                    description: item.snippet.description || '',
+                    thumbnail_url: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '',
                     published_at: item.snippet.publishedAt,
-                    view_count: parseInt(item.statistics.viewCount || '0'),
-                    like_count: parseInt(item.statistics.likeCount || '0'),
-                    comment_count: parseInt(item.statistics.commentCount || '0'),
-                    duration: item.contentDetails.duration,
-                    privacy_status: item.status.privacyStatus,
+                    view_count: parseInt(item.statistics?.viewCount || '0'),
+                    like_count: parseInt(item.statistics?.likeCount || '0'),
+                    comment_count: parseInt(item.statistics?.commentCount || '0'),
+                    duration: item.contentDetails?.duration || 'PT0S',
+                    privacy_status: item.status?.privacyStatus || 'public',
                     tags: item.snippet.tags || [],
                     last_updated: new Date().toISOString()
                 });
             }
+        } else {
+            const errBody = await dataRes.text();
+            this.logger.error(`[Tier1] Data API Error: ${dataRes.status} - ${errBody}`);
         }
 
         // B. Health Summary (Analytics API)
@@ -301,6 +305,8 @@ export class YoutubeService {
                     [vid, vws, mins, avgD, avgP, subs, imp, ctr, engV, esc] = row;
                 }
 
+                if (!vid) continue; // Skip if no video ID in row
+
                 const existing = videoMap.get(vid) || { video_id: vid, channel_id: channelId };
                 videoMap.set(vid, {
                     ...existing,
@@ -320,14 +326,15 @@ export class YoutubeService {
             }
         }
 
-        // Garantir que vídeos sem analytics tenham defaults (evita NOT NULL errors)
+        // Garantir que vídeos sem analytics ou metadata tenham defaults (evita NOT NULL errors)
         for (const [vid, video] of videoMap.entries()) {
             videoMap.set(vid, {
+                title: video.title || 'Sem Título',
+                thumbnail_url: video.thumbnail_url || '',
                 analytics_views: 0,
                 estimated_minutes_watched: 0,
                 estimated_revenue: 0,
                 average_view_duration_seconds: 0,
-                average_view_duration: 0,
                 average_view_percentage: 0,
                 subscribers_gained: 0,
                 impressions: 0,
@@ -341,8 +348,24 @@ export class YoutubeService {
         // Final Batch Upsert for yt_myvideos
         const finalRows = Array.from(videoMap.values());
         if (finalRows.length > 0) {
-            const { error } = await this.supabase.from('yt_myvideos').upsert(finalRows, { onConflict: 'video_id' });
-            if (error) this.logger.error(`[Tier1] Batch Upsert error: ${error.message}`);
+            try {
+                const { error } = await this.supabase.from('yt_myvideos').upsert(finalRows, { onConflict: 'video_id' });
+                if (error) {
+                    this.logger.error(`[Tier1] Upsert Error: ${error.message}`);
+                    if (error.message.includes('estimated_revenue')) {
+                        this.logger.warn("Parece que a coluna estimated_revenue ainda não foi criada. Removendo métrica e tentando novamente...");
+                        const sanitized = finalRows.map(({ estimated_revenue, ...rest }: any) => rest);
+                        const { error: retryErr } = await this.supabase.from('yt_myvideos').upsert(sanitized, { onConflict: 'video_id' });
+                        if (retryErr) throw retryErr;
+                    } else {
+                        throw error;
+                    }
+                }
+            } catch (err: any) {
+                this.logger.error(`[Tier1] Final Batch Upsert failed: ${err.message}`);
+                // Não lançamos erro aqui para não travar a sincronização de outras partes
+                // mas logamos o erro para debug.
+            }
         }
 
         // B. Traffic Types Aggregate (Batch)
