@@ -405,84 +405,88 @@ export class YoutubeService {
         const startDate = '2022-01-01'; // Etapa 1: Janela reduzida para maior estabilidade
 
         await Promise.all(videoIds.map(async (vid) => {
-            const encodedVid = encodeURIComponent(vid);
+            try {
+                const encodedVid = encodeURIComponent(vid);
 
-            // A. Retention Curve
-            const retUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${vid}`;
-            const retRes = await fetch(retUrl, { headers: { Authorization: `Bearer ${token}` } });
+                // A. Retention Curve
+                const retUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${vid}`;
+                const retRes = await fetch(retUrl, { headers: { Authorization: `Bearer ${token}` } });
 
-            if (retRes.ok) {
-                const retData = await retRes.json();
-                const rows = retData.rows || [];
-                this.logger.log(`[Tier2] Retention curve for ${vid}: ${rows.length} rows`);
+                if (retRes.ok) {
+                    const retData = await retRes.json();
+                    const rows = retData.rows || [];
+                    this.logger.log(`[Tier2] Retention curve for ${vid}: ${rows.length} rows`);
 
-                if (rows.length > 0) {
-                    // Buscamos a duração do vídeo para converter o ratio em segundos (second_mark)
-                    const { data: vData } = await this.supabase.from('yt_myvideos').select('duration').eq('video_id', vid).single();
-                    const totalSeconds = vData?.duration ? this.parseDurationSeconds(vData.duration) : 0;
+                    if (rows.length > 0) {
+                        // Buscamos a duração do vídeo para converter o ratio em segundos (second_mark)
+                        const { data: vData } = await this.supabase.from('yt_myvideos').select('duration').eq('video_id', vid).single();
+                        const totalSeconds = vData?.duration ? this.parseDurationSeconds(vData.duration) : 0;
 
-                    const retRows = rows.map(r => ({
+                        const retRows = rows.map(r => ({
+                            video_id: vid,
+                            second_mark: Math.round(parseFloat(r[0]) * totalSeconds),
+                            retention_percentage: parseFloat(r[1]) * 100
+                        }));
+
+                        // Trava de Segurança: Só deleta se a API de fato retornou a curva
+                        await this.supabase.from('yt_video_retention_curve').delete().eq('video_id', vid);
+                        const { error } = await this.supabase.from('yt_video_retention_curve').insert(retRows);
+                        if (error) this.logger.error(`[Tier2] DB Error (Retention) for ${vid}: ${error.message}`);
+                    }
+                } else {
+                    const errBody = await retRes.text();
+                    this.logger.error(`[Tier2] API Error (Retention) for ${vid}: ${retRes.status} - ${errBody}`);
+                }
+
+                // B. Search Keywords Detail
+                const detailUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=views&dimensions=insightTrafficSourceDetail&filters=insightTrafficSourceType==YT_SEARCH;video==${vid}`;
+                const dRes = await fetch(detailUrl, { headers: { Authorization: `Bearer ${token}` } });
+                if (dRes.ok) {
+                    const dData = await dRes.json();
+                    const rows = dData.rows || [];
+                    this.logger.log(`[Tier2] YT_SEARCH details for ${vid}: ${rows.length} rows`);
+                    const dRows = rows.slice(0, 15).map(r => ({
                         video_id: vid,
-                        second_mark: Math.round(parseFloat(r[0]) * totalSeconds),
-                        retention_percentage: parseFloat(r[1]) * 100
+                        source_type: 'YT_SEARCH',
+                        source_detail: r[0],
+                        views: r[1],
+                        watch_time_minutes: 0 // Simplificado na Etapa 1
                     }));
-
-                    // Trava de Segurança: Só deleta se a API de fato retornou a curva
-                    await this.supabase.from('yt_video_retention_curve').delete().eq('video_id', vid);
-                    const { error } = await this.supabase.from('yt_video_retention_curve').insert(retRows);
-                    if (error) this.logger.error(`[Tier2] DB Error (Retention) for ${vid}: ${error.message}`);
+                    if (dRows.length > 0) {
+                        await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'YT_SEARCH').neq('source_detail', '');
+                        const { error } = await this.supabase.from('yt_video_traffic_details').insert(dRows);
+                        if (error) this.logger.error(`[Tier2] DB Error (Search) for ${vid}: ${error.message}`);
+                    }
+                } else {
+                    const errBody = await dRes.text();
+                    this.logger.error(`[Tier2] API Error (Search) for ${vid}: ${dRes.status} - ${errBody}`);
                 }
-            } else {
-                const errBody = await retRes.text();
-                this.logger.error(`[Tier2] API Error (Retention) for ${vid}: ${retRes.status} - ${errBody}`);
-            }
 
-            // B. Search Keywords Detail
-            const detailUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=views&dimensions=insightTrafficSourceDetail&filters=insightTrafficSourceType==YT_SEARCH;video==${vid}`;
-            const dRes = await fetch(detailUrl, { headers: { Authorization: `Bearer ${token}` } });
-            if (dRes.ok) {
-                const dData = await dRes.json();
-                const rows = dData.rows || [];
-                this.logger.log(`[Tier2] YT_SEARCH details for ${vid}: ${rows.length} rows`);
-                const dRows = rows.slice(0, 15).map(r => ({
-                    video_id: vid,
-                    source_type: 'YT_SEARCH',
-                    source_detail: r[0],
-                    views: r[1],
-                    watch_time_minutes: 0 // Simplificado na Etapa 1
-                }));
-                if (dRows.length > 0) {
-                    await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'YT_SEARCH').neq('source_detail', '');
-                    const { error } = await this.supabase.from('yt_video_traffic_details').insert(dRows);
-                    if (error) this.logger.error(`[Tier2] DB Error (Search) for ${vid}: ${error.message}`);
+                // C. Suggested Videos Detail
+                const suggUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=views&dimensions=insightTrafficSourceDetail&filters=insightTrafficSourceType==RELATED_VIDEO;video==${vid}`;
+                const sRes = await fetch(suggUrl, { headers: { Authorization: `Bearer ${token}` } });
+                if (sRes.ok) {
+                    const sData = await sRes.json();
+                    const rows = sData.rows || [];
+                    this.logger.log(`[Tier2] RELATED_VIDEO details for ${vid}: ${rows.length} rows`);
+                    const sRows = rows.slice(0, 15).map(r => ({
+                        video_id: vid,
+                        source_type: 'RELATED_VIDEO',
+                        source_detail: r[0],
+                        views: r[1],
+                        watch_time_minutes: 0 // Simplificado na Etapa 1
+                    }));
+                    if (sRows.length > 0) {
+                        await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'RELATED_VIDEO').neq('source_detail', '');
+                        const { error } = await this.supabase.from('yt_video_traffic_details').insert(sRows);
+                        if (error) this.logger.error(`[Tier2] DB Error (Suggested) for ${vid}: ${error.message}`);
+                    }
+                } else {
+                    const errBody = await sRes.text();
+                    this.logger.error(`[Tier2] API Error (Suggested) for ${vid}: ${sRes.status} - ${errBody}`);
                 }
-            } else {
-                const errBody = await dRes.text();
-                this.logger.error(`[Tier2] API Error (Search) for ${vid}: ${dRes.status} - ${errBody}`);
-            }
-
-            // C. Suggested Videos Detail
-            const suggUrl = `${this.analyticsUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${today}&metrics=views&dimensions=insightTrafficSourceDetail&filters=insightTrafficSourceType==RELATED_VIDEO;video==${vid}`;
-            const sRes = await fetch(suggUrl, { headers: { Authorization: `Bearer ${token}` } });
-            if (sRes.ok) {
-                const sData = await sRes.json();
-                const rows = sData.rows || [];
-                this.logger.log(`[Tier2] RELATED_VIDEO details for ${vid}: ${rows.length} rows`);
-                const sRows = rows.slice(0, 15).map(r => ({
-                    video_id: vid,
-                    source_type: 'RELATED_VIDEO',
-                    source_detail: r[0],
-                    views: r[1],
-                    watch_time_minutes: 0 // Simplificado na Etapa 1
-                }));
-                if (sRows.length > 0) {
-                    await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_type', 'RELATED_VIDEO').neq('source_detail', '');
-                    const { error } = await this.supabase.from('yt_video_traffic_details').insert(sRows);
-                    if (error) this.logger.error(`[Tier2] DB Error (Suggested) for ${vid}: ${error.message}`);
-                }
-            } else {
-                const errBody = await sRes.text();
-                this.logger.error(`[Tier2] API Error (Suggested) for ${vid}: ${sRes.status} - ${errBody}`);
+            } catch (err: any) {
+                this.logger.error(`[Tier2] Unexpected exception for video ${vid}: ${err.message}`);
             }
         }));
     }

@@ -294,52 +294,71 @@ export class SalesService {
   }
 
   private getPeriodDates(period: string): { start: Date | null, end: Date | null } {
-    const now = new Date();
-    const start = new Date(now);
-    const end = new Date(now);
+    const BR_OFFSET = -3; // Brasília is UTC-3
 
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
+    // 1. Current UTC time
+    const nowUtc = new Date();
+
+    // 2. Current Brasília time (shifted raw time)
+    const nowBr = new Date(nowUtc.getTime() + (BR_OFFSET * 3600 * 1000));
+
+    // 3. Define boundaries relative to Brasília local day
+    const start = new Date(nowBr);
+    start.setUTCHours(0, 0, 0, 0);
+
+    const end = new Date(nowBr);
+    end.setUTCHours(23, 59, 59, 999);
 
     switch (period) {
       case 'today':
-        return { start, end };
+        // start/end already set to today in BR
+        break;
 
       case 'week':
-        // Monday to Sunday
-        const day = start.getDay(); // 0 is Sunday, 1 is Monday...
-        const diff = start.getDate() - day + (day === 0 ? -6 : 1);
-        start.setDate(diff);
-        // End remains Sunday 23:59:59 of current week
-        const sunday = new Date(start);
-        sunday.setDate(start.getDate() + 6);
-        sunday.setHours(23, 59, 59, 999);
-        return { start, end: sunday };
+        // Monday to Sunday in BR
+        const day = start.getUTCDay(); // 0 is Sunday, 1 is Monday...
+        const diff = start.getUTCDate() - day + (day === 0 ? -6 : 1);
+        start.setUTCDate(diff);
+
+        // End of week (Sunday 23:59:59 in BR)
+        end.setTime(start.getTime());
+        end.setUTCDate(start.getUTCDate() + 6);
+        end.setUTCHours(23, 59, 59, 999);
+        break;
 
       case 'month':
-        start.setDate(1);
-        const lastDay = new Date(start.getFullYear(), start.getMonth() + 1, 0);
-        lastDay.setHours(23, 59, 59, 999);
-        return { start, end: lastDay };
+        start.setUTCDate(1);
+        // Last day of month in BR
+        const lastDayRaw = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+        end.setTime(lastDayRaw.getTime());
+        break;
 
       case '30days':
-        start.setDate(start.getDate() - 30);
-        return { start, end };
+        start.setUTCDate(start.getUTCDate() - 30);
+        break;
 
       case '60days':
-        start.setDate(start.getDate() - 60);
-        return { start, end };
+        start.setUTCDate(start.getUTCDate() - 60);
+        break;
 
       case 'year':
-        start.setMonth(0, 1);
-        const dec31 = new Date(start.getFullYear(), 11, 31);
-        dec31.setHours(23, 59, 59, 999);
-        return { start, end: dec31 };
+        start.setUTCMonth(0, 1);
+        const dec31 = new Date(Date.UTC(start.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
+        end.setTime(dec31.getTime());
+        break;
 
       case 'all':
       default:
         return { start: null, end: null };
     }
+
+    // 4. Convert back to REAL UTC values by removing the BR offset
+    const finalize = (d: Date) => new Date(d.getTime() - (BR_OFFSET * 3600 * 1000));
+
+    return {
+      start: finalize(start),
+      end: finalize(end)
+    };
   }
 
   async getDealsByVideo(videoId: string, period: string = 'month') {
