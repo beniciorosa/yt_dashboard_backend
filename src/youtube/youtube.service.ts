@@ -226,6 +226,15 @@ export class YoutubeService {
         return { success: true, processedCount: videoIds.length };
     }
 
+    private parseDurationSeconds(duration: string): number {
+        const matches = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        if (!matches) return 0;
+        const hours = parseInt(matches[1] || '0');
+        const minutes = parseInt(matches[2] || '0');
+        const seconds = parseInt(matches[3] || '0');
+        return hours * 3600 + minutes * 60 + seconds;
+    }
+
     private async processBatchTier1(videoIds: string[], token: string, today: string, channelId: string) {
         this.logger.log(`[Tier1] Processing batch of ${videoIds.length} videos`);
         const idsStr = videoIds.join(',');
@@ -354,26 +363,31 @@ export class YoutubeService {
             // A. Retention Curve
             const retUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=${startDate}&endDate=${today}&metrics=audienceWatchRatio&dimensions=elapsedVideoTimeRatio&filters=video==${encodedVid}`;
             const retRes = await fetch(retUrl, { headers: { Authorization: `Bearer ${token}` } });
+
             if (retRes.ok) {
                 const retData = await retRes.json();
                 const rows = retData.rows || [];
                 this.logger.log(`[Tier2] Retention curve for ${vid}: ${rows.length} rows`);
-                if (rows.length === 0) {
-                    this.logger.log(`[Tier2] No retention curve data for ${vid}. Response: ${JSON.stringify(retData)}`);
-                }
-                const retRows = rows.map(r => ({
-                    video_id: vid,
-                    relative_time: parseFloat(r[0]),
-                    retention_percentage: parseFloat(r[1]) * 100
-                }));
-                if (retRows.length > 0) {
+
+                if (rows.length > 0) {
+                    // Buscamos a duração do vídeo para converter o ratio em segundos (second_mark)
+                    const { data: vData } = await this.supabase.from('yt_myvideos').select('duration').eq('video_id', vid).single();
+                    const totalSeconds = vData?.duration ? this.parseDurationSeconds(vData.duration) : 0;
+
+                    const retRows = rows.map(r => ({
+                        video_id: vid,
+                        second_mark: Math.round(parseFloat(r[0]) * totalSeconds),
+                        retention_percentage: parseFloat(r[1]) * 100
+                    }));
+
                     // Trava de Segurança: Só deleta se a API de fato retornou a curva
                     await this.supabase.from('yt_video_retention_curve').delete().eq('video_id', vid);
                     const { error } = await this.supabase.from('yt_video_retention_curve').insert(retRows);
                     if (error) this.logger.error(`[Tier2] DB Error (Retention) for ${vid}: ${error.message}`);
                 }
             } else {
-                this.logger.error(`[Tier2] API Error (Retention) for ${vid}: ${retRes.status}`);
+                const errBody = await retRes.text();
+                this.logger.error(`[Tier2] API Error (Retention) for ${vid}: ${retRes.status} - ${errBody}`);
             }
 
             // B. Search Keywords Detail
@@ -383,9 +397,6 @@ export class YoutubeService {
                 const dData = await dRes.json();
                 const rows = dData.rows || [];
                 this.logger.log(`[Tier2] YT_SEARCH details for ${vid}: ${rows.length} rows`);
-                if (rows.length === 0) {
-                    this.logger.log(`[Tier2] No YT_SEARCH details for ${vid}. Response: ${JSON.stringify(dData)}`);
-                }
                 const dRows = rows.slice(0, 15).map(r => ({
                     video_id: vid,
                     source_type: 'YT_SEARCH',
@@ -400,7 +411,8 @@ export class YoutubeService {
                     if (error) this.logger.error(`[Tier2] DB Error (Search) for ${vid}: ${error.message}`);
                 }
             } else {
-                this.logger.error(`[Tier2] API Error (Search) for ${vid}: ${dRes.status}`);
+                const errBody = await dRes.text();
+                this.logger.error(`[Tier2] API Error (Search) for ${vid}: ${dRes.status} - ${errBody}`);
             }
 
             // C. Suggested Videos Detail
