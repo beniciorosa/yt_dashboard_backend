@@ -57,4 +57,28 @@ export class YoutubeController {
             throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    @Get('dashboard')
+    async getDashboard(@Query('channelId') channelId: string) {
+        if (!channelId) {
+            throw new HttpException('ChannelId is required', HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return await this.youtubeService.getDashboardData(channelId);
+        } catch (error: any) {
+            throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Get('video-details/:videoId')
+    async getVideoDetails(@Query('videoId') videoId: string) {
+        if (!videoId) {
+            throw new HttpException('VideoId is required', HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return await this.youtubeService.getVideoDetails(videoId);
+        } catch (error: any) {
+            throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 }

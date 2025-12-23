@@ -439,4 +439,61 @@ export class YoutubeService {
             }
         }));
     }
+
+    async getDashboardData(channelId: string) {
+        this.logger.log(`[Dashboard] Fetching data for channel: ${channelId}`);
+        const { data, error } = await this.supabase
+            .from('yt_myvideos')
+            .select('*')
+            .eq('channel_id', channelId)
+            .order('view_count', { ascending: false });
+
+        if (error) {
+            this.logger.error(`[Dashboard] DB Error: ${error.message}`);
+            throw new Error(`Database error: ${error.message}`);
+        }
+
+        // Return data in the shape the frontend expects (VideoData[])
+        return data.map(v => ({
+            id: v.video_id,
+            title: v.title,
+            thumbnail: v.thumbnail,
+            description: v.description,
+            publishedAt: v.published_at,
+            viewCount: v.view_count,
+            likeCount: v.likes,
+            commentCount: v.comments,
+            estimatedRevenue: v.estimated_revenue,
+            estimatedMinutesWatched: v.estimated_minutes_watched,
+            subscribersGained: v.subscribers_gained,
+            privacyStatus: v.privacy_status,
+            channelId: v.channel_id,
+            duration: v.duration
+        }));
+    }
+
+    async getVideoDetails(videoId: string) {
+        this.logger.log(`[VideoDetails] Fetching details for video: ${videoId}`);
+
+        const [retention, traffic] = await Promise.all([
+            this.supabase
+                .from('yt_video_retention_curve')
+                .select('*')
+                .eq('video_id', videoId)
+                .order('second_mark', { ascending: true }),
+            this.supabase
+                .from('yt_video_traffic_details')
+                .select('*')
+                .eq('video_id', videoId)
+                .order('views', { ascending: false })
+        ]);
+
+        if (retention.error) this.logger.error(`[VideoDetails] Retention Error: ${retention.error.message}`);
+        if (traffic.error) this.logger.error(`[VideoDetails] Traffic Error: ${traffic.error.message}`);
+
+        return {
+            retention: retention.data || [],
+            traffic: traffic.data || []
+        };
+    }
 }
