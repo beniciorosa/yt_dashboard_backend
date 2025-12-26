@@ -100,8 +100,7 @@ export class CommentsService {
             .insert([{
                 comment_text: commentText,
                 reply_text: replyText,
-                username: username,
-                created_at: new Date().toISOString()
+                username: username
             }]);
 
         if (error) {
@@ -237,8 +236,7 @@ export class CommentsService {
                     author_profile_image: commentData.author_profile_image,
                     content: commentData.content,
                     video_id: commentData.video_id,
-                    video_title: commentData.video_title,
-                    created_at: new Date().toISOString()
+                    video_title: commentData.video_title
                 }]);
 
             if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
