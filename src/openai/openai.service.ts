@@ -304,7 +304,7 @@ export class OpenaiService {
                         }
                     ],
                     reasoning: {
-                        effort: 'xhigh'
+                        effort: 'high' // Lowered from xhigh to stay under Vercel's 300s timeout
                     }
                 });
 

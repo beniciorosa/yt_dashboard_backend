@@ -23,7 +23,8 @@ export class GeniusService {
             const { data: comments, error } = await this.supabase
                 .from('reply_examples')
                 .select('comment_text')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(300);
 
             if (error) throw error;
             if (!comments || comments.length === 0) {
