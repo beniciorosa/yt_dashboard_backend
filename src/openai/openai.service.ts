@@ -267,7 +267,7 @@ export class OpenaiService {
                     { role: 'system', content: 'You are a helpful assistant that generates slugs.' },
                     { role: 'user', content: prompt },
                 ],
-                model: 'gpt-4o', // Using gpt-4o as replacement for gemini-2.5-flash
+                model: 'gpt-5.2-pro', // Upgraded to flagship GPT-5.2 Pro
                 max_tokens: 50,
                 temperature: 0.2,
             });
@@ -289,14 +289,14 @@ export class OpenaiService {
         }
     }
 
-    async generateText(prompt: string): Promise<string> {
+    async generateText(prompt: string, model?: string): Promise<string> {
         try {
             const completion = await this.openai.chat.completions.create({
                 messages: [
                     { role: 'system', content: 'You are a helpful assistant.' },
                     { role: 'user', content: prompt }
                 ],
-                model: 'gpt-4o',
+                model: model || 'gpt-5.2-pro',
             });
 
             return completion.choices[0].message.content || "";

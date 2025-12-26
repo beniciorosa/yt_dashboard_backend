@@ -23,8 +23,7 @@ export class GeniusService {
             const { data: comments, error } = await this.supabase
                 .from('reply_examples')
                 .select('comment_text')
-                .order('created_at', { ascending: false })
-                .limit(100);
+                .order('created_at', { ascending: false });
 
             if (error) throw error;
             if (!comments || comments.length === 0) {
@@ -38,17 +37,17 @@ export class GeniusService {
 
             const prompt = `
         Você é um analista sênior de dados e estrategista de conteúdo para YouTube (GENIUS).
-        Sua tarefa é analisar o histórico de perguntas e comentários dos inscritos para identificar:
+        Sua tarefa é analisar o histórico COMPLETO de perguntas e comentários dos inscritos para identificar:
         1. Padrões de dúvidas recorrentes.
         2. Dores ou problemas que os inscritos estão enfrentando.
         3. Oportunidades de novos vídeos que resolveriam essas dores.
 
-        Abaixo está o histórico de comentários recentes:
+        Abaixo está o banco completo de interações:
         ${commentsJoined}
 
         INSTRUÇÕES:
-        - Analise profundamente o contexto.
-        - Sugira 3 ideias de vídeos altamente clicáveis e úteis.
+        - Analise profundamente o contexto de todos os dados fornecidos.
+        - Sugira 3 ideias de vídeos altamente clicáveis e úteis baseadas nas tendências de todo o histórico.
         - Explique o PORQUÊ de cada ideia com base nos dados.
         - Retorne a resposta em formato Markdown organizado e elegante.
         - Use emojis para tornar a leitura agradável.
@@ -60,7 +59,7 @@ export class GeniusService {
 
             return {
                 ideas: response,
-                thinking: "Análise processada via ChatGPT (GPT-4o)"
+                thinking: "Análise processada via GPT-5.2 Pro (Flagship)"
             };
         } catch (error) {
             this.logger.error('Error in generateVideoIdeasFromComments', error);
