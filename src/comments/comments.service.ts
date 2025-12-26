@@ -100,7 +100,8 @@ export class CommentsService {
             .insert([{
                 comment_text: commentText,
                 reply_text: replyText,
-                username: username
+                username: username,
+                created_at: new Date().toISOString()
             }]);
 
         if (error) {
