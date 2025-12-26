@@ -290,19 +290,45 @@ export class OpenaiService {
     }
 
     async generateText(prompt: string, model?: string): Promise<string> {
+        const targetModel = model || 'gpt-5.2-pro';
+
         try {
+            // Specialized handling for GPT-5 flagship models which require the Responses API
+            if (targetModel.startsWith('gpt-5') && targetModel.includes('pro')) {
+                const response = await (this.openai as any).responses.create({
+                    model: targetModel,
+                    input: [
+                        {
+                            role: 'user',
+                            content: [{ type: 'input_text', text: prompt }]
+                        }
+                    ],
+                    reasoning: {
+                        effort: 'xhigh'
+                    }
+                });
+
+                // Extract text from the new Responses API structure
+                const firstOutput = response.output?.[0];
+                if (firstOutput?.type === 'message') {
+                    return firstOutput.content?.find((c: any) => c.type === 'output_text')?.text || "";
+                }
+                return "";
+            }
+
+            // Standard Chat Completions for other models (gpt-4o, etc.)
             const completion = await this.openai.chat.completions.create({
                 messages: [
                     { role: 'system', content: 'You are a helpful assistant.' },
                     { role: 'user', content: prompt }
                 ],
-                model: model || 'gpt-5.2-pro',
+                model: targetModel,
             });
 
             return completion.choices[0].message.content || "";
         } catch (error) {
-            console.error("Error generating text with OpenAI:", error);
-            throw new Error("Failed to generate text");
+            console.error(`Error generating text with OpenAI (${targetModel}):`, error);
+            throw new Error(`Failed to generate text with ${targetModel}`);
         }
     }
     async analyzeCompetitorGrowth(data: any) {
