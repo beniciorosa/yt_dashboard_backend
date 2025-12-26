@@ -45,4 +45,14 @@ export class CommentsController {
     async getUserHistory(@Param('username') username: string) {
         return await this.commentsService.getUserHistory(username);
     }
+
+    @Post('favorites/toggle')
+    async toggleFavorite(@Body() commentData: any) {
+        return await this.commentsService.toggleFavorite(commentData);
+    }
+
+    @Get('favorites')
+    async getFavorites() {
+        return await this.commentsService.getFavorites();
+    }
 }

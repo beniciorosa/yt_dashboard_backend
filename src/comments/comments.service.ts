@@ -206,4 +206,52 @@ export class CommentsService {
 
         return data;
     }
+
+    async toggleFavorite(commentData: any) {
+        const { comment_id } = commentData;
+
+        // Check if already favorited
+        const { data: existing } = await this.supabase
+            .from('comment_favorites')
+            .select('comment_id')
+            .eq('comment_id', comment_id)
+            .single();
+
+        if (existing) {
+            // Remove
+            const { error } = await this.supabase
+                .from('comment_favorites')
+                .delete()
+                .eq('comment_id', comment_id);
+
+            if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+            return { favorited: false };
+        } else {
+            // Add
+            const { error } = await this.supabase
+                .from('comment_favorites')
+                .insert([{
+                    comment_id: comment_id,
+                    author_name: commentData.author_name,
+                    author_profile_image: commentData.author_profile_image,
+                    content: commentData.content,
+                    video_id: commentData.video_id,
+                    video_title: commentData.video_title,
+                    created_at: new Date().toISOString()
+                }]);
+
+            if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+            return { favorited: true };
+        }
+    }
+
+    async getFavorites() {
+        const { data, error } = await this.supabase
+            .from('comment_favorites')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        return data;
+    }
 }
