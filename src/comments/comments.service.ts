@@ -161,4 +161,49 @@ export class CommentsService {
         }
         return { success: true };
     }
+
+    async getTopCommenters(limit: number = 5) {
+        // Since Supabase JS client doesn't support GROUP BY directly, 
+        // we can use a raw select if we have a view or rpc, 
+        // but for a simple "top 5" in a small/medium table, 
+        // fetching all unique usernames and their counts is feasible 
+        // OR we can use the 'count' feature with 'select' in a loop if usernames were known.
+        // BETTER: Using a direct select with aggregation.
+
+        const { data, error } = await this.supabase
+            .from('reply_examples')
+            .select('username')
+
+        if (error) {
+            this.logger.error('Error fetching top commenters', error);
+            throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        const counts: Record<string, number> = {};
+        (data || []).forEach(r => {
+            if (r.username) {
+                counts[r.username] = (counts[r.username] || 0) + 1;
+            }
+        });
+
+        return Object.entries(counts)
+            .map(([username, count]) => ({ username, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, limit);
+    }
+
+    async getUserHistory(username: string) {
+        const { data, error } = await this.supabase
+            .from('reply_examples')
+            .select('*')
+            .eq('username', username)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            this.logger.error(`Error fetching history for ${username}`, error);
+            throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        return data;
+    }
 }

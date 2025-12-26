@@ -35,4 +35,14 @@ export class CommentsController {
         const count = await this.commentsService.getInteractionCount(username);
         return { count };
     }
+
+    @Get('top-commenters')
+    async getTopCommenters() {
+        return await this.commentsService.getTopCommenters(5);
+    }
+
+    @Get('history/:username')
+    async getUserHistory(@Param('username') username: string) {
+        return await this.commentsService.getUserHistory(username);
+    }
 }
