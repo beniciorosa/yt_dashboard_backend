@@ -267,7 +267,7 @@ export class OpenaiService {
                     { role: 'system', content: 'You are a helpful assistant that generates slugs.' },
                     { role: 'user', content: prompt },
                 ],
-                model: 'gpt-5.2-pro', // Upgraded to flagship GPT-5.2 Pro
+                model: 'gpt-4o', // Reverted from gpt-5.2-pro for stability
                 max_tokens: 50,
                 temperature: 0.2,
             });
