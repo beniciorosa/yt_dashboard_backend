@@ -95,6 +95,8 @@ export class CommentsService {
                 - Seja mais detalhista, técnico e forneça contexto estratégico nas respostas.
                 - Não se limite a 2 frases se a pergunta exigir uma explicação técnica melhor. 
                 - Siga exatamente os exemplos de tom de voz, mas com a profundidade de um mentor experiente e empático.
+                - FORMATAÇÃO: NÃO use negrito ou asteriscos (**) em nenhuma parte do texto.
+                - EMOJIS: Caso decida usar um emoji no final, alterne de forma natural entre o foguete (🚀) e a montanha Fuji (🗻).
             `;
         }
 
