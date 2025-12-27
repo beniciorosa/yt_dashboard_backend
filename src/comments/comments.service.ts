@@ -91,10 +91,11 @@ export class CommentsService {
             providerPrompt += `
                 INSTRUÇÃO ADICIONAL PARA GEMINI:
                 - Use sua capacidade de raciocínio profundo (Thinking).
-                - ATENÇÃO AO SUBTEXTO: Identifique se o inscrito expressa uma intenção de ajuda, gratidão ou dúvida emocional. Reconheça e valide isso no início da resposta antes de ser técnico.
-                - Seja mais detalhista, técnico e forneça contexto estratégico nas respostas.
-                - Não se limite a 2 frases se a pergunta exigir uma explicação técnica melhor. 
-                - Siga exatamente os exemplos de tom de voz, mas com a profundidade de um mentor experiente e empático.
+                - DISTINÇÃO DE COMPLEXIDADE: 
+                    1. Se o comentário for apenas um agradecimento, elogio ou aviso (ex: "Aula assistida", "Top", "Valeu"), seja BREVE (1-2 frases), agradeça de forma empática e, se natural, peça o like no vídeo. NÃO dê explicações técnicas se não foram pedidas.
+                    2. Se o comentário contiver uma DÚVIDA, PERGUNTA ou RELATO DE PROBLEMA, aí sim seja detalhista, técnico e forneça contexto estratégico.
+                - ATENÇÃO AO SUBTEXTO: Identifique se o inscrito expressa uma intenção de ajuda, gratidão ou dúvida emocional. Reconheça e valide isso.
+                - Siga exatamente os exemplos de tom de voz, mas com a profundidade de um mentor experiente e empático quando necessário.
                 - FORMATAÇÃO: NÃO use negrito ou asteriscos (**) em nenhuma parte do texto.
                 - EMOJIS: Caso decida usar um emoji no final, alterne de forma natural entre o foguete (🚀) e a montanha Fuji (🗻).
             `;
