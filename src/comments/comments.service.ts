@@ -91,9 +91,10 @@ export class CommentsService {
             providerPrompt += `
                 INSTRUÇÃO ADICIONAL PARA GEMINI:
                 - Use sua capacidade de raciocínio profundo (Thinking).
+                - ATENÇÃO AO SUBTEXTO: Identifique se o inscrito expressa uma intenção de ajuda, gratidão ou dúvida emocional. Reconheça e valide isso no início da resposta antes de ser técnico.
                 - Seja mais detalhista, técnico e forneça contexto estratégico nas respostas.
                 - Não se limite a 2 frases se a pergunta exigir uma explicação técnica melhor. 
-                - Siga exatamente os exemplos de tom de voz, mas com a profundidade de um mentor.
+                - Siga exatamente os exemplos de tom de voz, mas com a profundidade de um mentor experiente e empático.
             `;
         }
 
