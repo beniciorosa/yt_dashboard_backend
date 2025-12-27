@@ -18,7 +18,7 @@ export class GeminiService {
     async generateThinking(prompt: string): Promise<string> {
         try {
             // Using the experimental thinking model as requested
-            const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+            const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-thinking-exp-1219' });
 
             const result = await model.generateContent(prompt);
             const response = await result.response;

@@ -86,9 +86,20 @@ export class CommentsService {
             - Tente iniciar com o nome da pessoa se fizer sentido (ex: "Fala Jonas, ...").
         `;
 
+        let providerPrompt = prompt;
+        if (provider === 'gemini') {
+            providerPrompt += `
+                INSTRUÇÃO ADICIONAL PARA GEMINI:
+                - Use sua capacidade de raciocínio profundo (Thinking).
+                - Seja mais detalhista, técnico e forneça contexto estratégico nas respostas.
+                - Não se limite a 2 frases se a pergunta exigir uma explicação técnica melhor. 
+                - Siga exatamente os exemplos de tom de voz, mas com a profundidade de um mentor.
+            `;
+        }
+
         try {
             if (provider === 'gemini') {
-                return await this.geminiService.generateThinking(prompt);
+                return await this.geminiService.generateThinking(providerPrompt);
             }
             return await this.openaiService.generateText(prompt);
         } catch (error: any) {
