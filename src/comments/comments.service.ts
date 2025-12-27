@@ -1,6 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OpenaiService } from '../openai/openai.service';
+import { GeminiService } from '../gemini/gemini.service';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class CommentsService {
 
     constructor(
         private openaiService: OpenaiService,
+        private geminiService: GeminiService,
         private configService: ConfigService
     ) {
         const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
@@ -25,7 +27,7 @@ export class CommentsService {
         });
     }
 
-    async generateAiReply(commentText: string, videoTitle?: string, style: string = 'professional', authorName?: string) {
+    async generateAiReply(commentText: string, videoTitle?: string, style: string = 'professional', authorName?: string, provider: 'openai' | 'gemini' = 'openai') {
         // 1. Fetch recent examples to learn tone
         let examples = "";
         try {
@@ -85,10 +87,13 @@ export class CommentsService {
         `;
 
         try {
+            if (provider === 'gemini') {
+                return await this.geminiService.generateThinking(prompt);
+            }
             return await this.openaiService.generateText(prompt);
-        } catch (error) {
+        } catch (error: any) {
             this.logger.error('Error generating AI reply', error);
-            throw new HttpException('Failed to generate reply', HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new HttpException(`Failed to generate reply: ${error.message || error}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
