@@ -308,11 +308,26 @@ export class OpenaiService {
                     }
                 });
 
-                // Extract text from the new Responses API structure
-                const firstOutput = response.output?.[0];
-                if (firstOutput?.type === 'message') {
-                    return firstOutput.content?.find((c: any) => c.type === 'output_text')?.text || "";
+                // Extraction from Responses API (GPT-5 series)
+                // Priority 1: Top-level output_text
+                if (response.output_text) return response.output_text;
+
+                // Priority 2: Full content search in output items
+                const outputItems = response.output || [];
+                for (const item of outputItems) {
+                    if (item.type === 'message' && item.content) {
+                        const textItem = item.content.find((c: any) => c.type === 'output_text');
+                        if (textItem?.text) return textItem.text;
+                    }
                 }
+
+                // Fallback for different response item types
+                for (const item of outputItems) {
+                    if (item.text) return item.text;
+                    if (item.content && typeof item.content === 'string') return item.content;
+                }
+
+                console.warn(`GPT-5 Pro (${targetModel}): Could not extract text from response. Structure:`, JSON.stringify(response));
                 return "";
             }
 
