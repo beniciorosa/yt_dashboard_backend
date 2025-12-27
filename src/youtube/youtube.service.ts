@@ -36,8 +36,16 @@ export class YoutubeService {
         try {
             const response = await fetch(url.toString());
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(JSON.stringify(error));
+                const errorMessage = await response.text();
+                this.logger.error(`YouTube API error (${endpoint}): ${errorMessage} - Status: ${response.status}`);
+                // Throwing an object that looks like an Axios error for the controller
+                throw {
+                    response: {
+                        status: response.status,
+                        data: errorMessage
+                    },
+                    message: `YouTube API Error: ${response.status}`
+                };
             }
             return await response.json();
         } catch (error) {
@@ -99,7 +107,13 @@ export class YoutubeService {
             if (!response.ok) {
                 console.error(`[ProxyAction] Upstream Error (${status}) RawBody:`, rawBody);
                 const errorMessage = jsonBody ? JSON.stringify(jsonBody) : (rawBody || `YouTube API Error ${status}`);
-                throw new Error(errorMessage);
+                throw {
+                    response: {
+                        status: status,
+                        data: jsonBody || rawBody
+                    },
+                    message: `YouTube API Error: ${status}`
+                };
             }
 
             if (status === 204) {
