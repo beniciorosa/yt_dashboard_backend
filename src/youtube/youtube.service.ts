@@ -145,29 +145,55 @@ export class YoutubeService {
             .eq('channel_id', channelId)
             .single();
 
-        if (error || !data) throw new Error('Refresh token not found for channel');
+        if (error || !data?.refresh_token) {
+            throw new Error(`Refresh token ausente para o canal ${channelId}. Faça login novamente no app para reconectar o canal.`);
+        }
 
         const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
         const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
+
+        // Sem essas credenciais o backend NÃO consegue trocar o refresh_token por um access_token.
+        // Elas precisam estar nas variáveis de ambiente do backend (painel da Vercel) — não ficam no .env do repo.
+        if (!clientId || !clientSecret) {
+            throw new Error('OAuth não configurado no backend: defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nas variáveis de ambiente (Vercel). Sem elas, a sincronização do canal sempre falha.');
+        }
 
         const response = await fetch('https://oauth2.googleapis.com/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
-                client_id: clientId || '',
-                client_secret: clientSecret || '',
+                client_id: clientId,
+                client_secret: clientSecret,
                 refresh_token: data.refresh_token,
                 grant_type: 'refresh_token',
             } as any),
         });
 
-        const result = await response.json();
-        if (!response.ok) throw new Error(`Failed to refresh token: ${JSON.stringify(result)}`);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            // Expõe o erro EXATO do Google para diagnóstico:
+            //  - invalid_grant  => refresh_token revogado/expirado (relogar; conferir se o app OAuth está em "Production")
+            //  - invalid_client => GOOGLE_CLIENT_ID/SECRET incorretos ou de outro app
+            const gErr = result?.error || `http_${response.status}`;
+            const gDesc = result?.error_description || JSON.stringify(result);
+            this.logger.error(`[OAuth] Falha ao renovar token do canal ${channelId}: ${gErr} - ${gDesc}`);
+            throw new Error(`Falha ao renovar token do canal ${channelId} (${gErr}): ${gDesc}`);
+        }
+
+        if (!result.access_token) {
+            throw new Error(`Resposta de token sem access_token para o canal ${channelId}: ${JSON.stringify(result)}`);
+        }
 
         return result.access_token;
     }
 
-    async syncDetailedEngagement(channelId: string, specificVideoIds?: string[], includeDeepDive = true) {
+    async syncDetailedEngagement(
+        channelId: string,
+        specificVideoIds?: string[],
+        includeDeepDive = true,
+        options?: { maxVideos?: number; timeBudgetMs?: number },
+    ) {
+        const startTs = Date.now();
         this.logger.log(`Starting detailed sync for channel: ${channelId}`);
         const token = await this.refreshAccessToken(channelId);
         const today = new Date().toISOString().split('T')[0];
@@ -184,17 +210,25 @@ export class YoutubeService {
             const channelRes = await fetch(`${this.baseUrl}/channels?part=contentDetails&id=${channelId}&key=${this.apiKey}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
+            if (!channelRes.ok) {
+                const body = await channelRes.text();
+                throw new Error(`Falha ao buscar o canal ${channelId} (${channelRes.status}): ${body}`);
+            }
             const channelData = await channelRes.json();
             const uploadsId = channelData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
 
-            if (!uploadsId) throw new Error('Could not find uploads playlist for channel');
+            if (!uploadsId) throw new Error(`Playlist de uploads não encontrada para o canal ${channelId}`);
 
-            // B. Busca todos os vídeos da playlist
+            // B. Busca todos os vídeos da playlist (com checagem de erro por página p/ não truncar em silêncio)
             videoIds = [];
             let nextPageToken = '';
             do {
                 const url = `${this.baseUrl}/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=50&key=${this.apiKey}${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
                 const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                if (!res.ok) {
+                    const body = await res.text();
+                    throw new Error(`Falha ao paginar uploads do canal ${channelId} (${res.status}): ${body}`);
+                }
                 const data = await res.json();
                 if (data.items) {
                     videoIds.push(...data.items.map((i: any) => i.snippet.resourceId.videoId));
@@ -204,40 +238,85 @@ export class YoutubeService {
 
             this.logger.log(`[Discovery] Found ${videoIds.length} videos in uploads playlist.`);
 
+            // Resumável: processa primeiro os vídeos mais "velhos" (last_updated mais antigo / nunca sincronizado).
+            // Assim, mesmo limitando por execução, o cron converge para o canal inteiro entre as rodadas.
+            const { data: existing } = await this.supabase
+                .from('yt_myvideos')
+                .select('video_id, last_updated')
+                .eq('channel_id', channelId);
+            const lastMap = new Map<string, number>(
+                (existing || []).map((v: any) => [v.video_id, v.last_updated ? new Date(v.last_updated).getTime() : 0]),
+            );
+            videoIds.sort((a, b) => (lastMap.get(a) ?? 0) - (lastMap.get(b) ?? 0));
+
             // Se não passou IDs específicos, assume que quer o deep dive como padrão
             if (specificVideoIds === undefined && includeDeepDive === undefined) {
                 shouldDeepDive = true;
             }
         }
 
-        this.logger.log(`Processing ${videoIds.length} videos. Deep Dive: ${shouldDeepDive}`);
+        // Limites para caber no tempo da função serverless (evita o timeout que congelava o sync).
+        const discovered = videoIds.length;
+        const maxVideos = options?.maxVideos && options.maxVideos > 0 ? options.maxVideos : videoIds.length;
+        const timeBudgetMs = options?.timeBudgetMs ?? 0; // 0 = sem limite de tempo
+        const toProcess = videoIds.slice(0, maxVideos);
 
-        // 1. Tier 1: Process batches of 50 for Health Summary & Traffic Type Aggregates
-        for (let i = 0; i < videoIds.length; i += 50) {
-            const batch = videoIds.slice(i, i + 50);
-            await this.processBatchTier1(batch, token, today, channelId);
-        }
+        this.logger.log(`Processing ${toProcess.length}/${discovered} videos (maxVideos=${maxVideos}, budgetMs=${timeBudgetMs}). Deep Dive: ${shouldDeepDive}`);
 
-        // 2. Tier 2: Deep Dive for Top Videos (Traffic Details & Retention)
-        if (shouldDeepDive) {
-            const { data: topVideos } = await this.supabase
-                .from('yt_myvideos')
-                .select('video_id, title, analytics_views')
-                .eq('channel_id', channelId)
-                .order('analytics_views', { ascending: false, nullsFirst: false })
-                .limit(5);
-
-            if (topVideos && topVideos.length > 0) {
-                this.logger.log(`[Tier2] Found ${topVideos.length} top videos for deep dive.`);
-                const topIds = topVideos.map(v => v.video_id);
-                // Usamos reliableEndDate para garantir que o YouTube tenha tempo de processar os dados detalhados
-                await this.processBatchTier2(topIds, token, reliableEndDate, channelId);
-            } else {
-                this.logger.log(`[Tier2] No top videos found with views for deep dive.`);
+        // 1. Tier 1: lotes de 50 — ISOLADOS: um lote que falha NÃO aborta os demais.
+        let processed = 0;
+        const failedBatches: { index: number; size: number; error: string }[] = [];
+        let stoppedByBudget = false;
+        for (let i = 0; i < toProcess.length; i += 50) {
+            if (timeBudgetMs && Date.now() - startTs > timeBudgetMs) {
+                stoppedByBudget = true;
+                this.logger.warn(`[Tier1] Orçamento de tempo (${timeBudgetMs}ms) atingido; parando após ${processed} vídeos.`);
+                break;
+            }
+            const batch = toProcess.slice(i, i + 50);
+            try {
+                await this.processBatchTier1(batch, token, today, channelId);
+                processed += batch.length;
+            } catch (e: any) {
+                this.logger.error(`[Tier1] Lote ${i}-${i + batch.length} falhou: ${e.message}`);
+                failedBatches.push({ index: i, size: batch.length, error: e.message });
             }
         }
 
-        return { success: true, processedCount: videoIds.length };
+        // 2. Tier 2: Deep Dive for Top Videos (Traffic Details & Retention) — também isolado.
+        if (shouldDeepDive && !stoppedByBudget) {
+            try {
+                const { data: topVideos } = await this.supabase
+                    .from('yt_myvideos')
+                    .select('video_id, title, analytics_views')
+                    .eq('channel_id', channelId)
+                    .order('analytics_views', { ascending: false, nullsFirst: false })
+                    .limit(5);
+
+                if (topVideos && topVideos.length > 0) {
+                    this.logger.log(`[Tier2] Found ${topVideos.length} top videos for deep dive.`);
+                    const topIds = topVideos.map(v => v.video_id);
+                    // Usamos reliableEndDate para garantir que o YouTube tenha tempo de processar os dados detalhados
+                    await this.processBatchTier2(topIds, token, reliableEndDate, channelId);
+                } else {
+                    this.logger.log(`[Tier2] No top videos found with views for deep dive.`);
+                }
+            } catch (e: any) {
+                this.logger.error(`[Tier2] Deep dive falhou: ${e.message}`);
+            }
+        }
+
+        const summary = {
+            success: failedBatches.length === 0,
+            channelId,
+            discovered,
+            processed,
+            failedBatches: failedBatches.length,
+            stoppedByBudget,
+            durationMs: Date.now() - startTs,
+        };
+        this.logger.log(`[Sync] Resumo: ${JSON.stringify(summary)}`);
+        return summary;
     }
 
     private parseDurationSeconds(duration: string): number {

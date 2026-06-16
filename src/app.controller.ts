@@ -21,12 +21,24 @@ export class AppController {
   @Get('sync-my-videos')
   async syncMyVideos(
     @Query('channelId') channelId: string,
-    @Query('deepDive') deepDive?: string
+    @Query('deepDive') deepDive?: string,
+    @Query('limit') limit?: string,
+    @Query('budgetMs') budgetMs?: string,
   ): Promise<any> {
     // Sincronização de vídeos: Metadados + métricas básicas
     // O deepDive (Tier 2) busca retenção e detalhes de busca para os top vídeos
     const shouldDeepDive = deepDive === 'false' ? false : true;
-    return await this.youtubeService.syncDetailedEngagement(channelId, undefined, shouldDeepDive);
+
+    // Limites para caber no tempo da função serverless (evita o timeout que congelava o sync).
+    // Os vídeos são processados do mais desatualizado para o mais recente, então o cron
+    // converge para o canal inteiro mesmo com limite por execução.
+    const maxVideos = limit ? Number(limit) : Number(process.env.SYNC_MAX_VIDEOS) || undefined;
+    const timeBudgetMs = budgetMs ? Number(budgetMs) : Number(process.env.SYNC_TIME_BUDGET_MS) || 50000;
+
+    return await this.youtubeService.syncDetailedEngagement(channelId, undefined, shouldDeepDive, {
+      maxVideos,
+      timeBudgetMs,
+    });
   }
 
   @Get('s_card')
