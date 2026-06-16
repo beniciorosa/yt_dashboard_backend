@@ -6,18 +6,29 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) { }
 
   @Get('ranking')
-  getRanking(@Query('period') period?: string) {
-    return this.salesService.getSalesRanking(period);
+  getRanking(@Query('period') period?: string, @Query('start') start?: string, @Query('end') end?: string) {
+    return this.salesService.getSalesRanking(period, start, end);
   }
 
   @Get('summary')
-  getSummary(@Query('period') period?: string) {
-    return this.salesService.getSalesSummary(period);
+  getSummary(@Query('period') period?: string, @Query('start') start?: string, @Query('end') end?: string) {
+    return this.salesService.getSalesSummary(period, start, end);
   }
 
   @Get('dashboard')
-  getDashboardData(@Query('period') period?: string) {
-    return this.salesService.getDashboardData(period);
+  getDashboardData(@Query('period') period?: string, @Query('start') start?: string, @Query('end') end?: string) {
+    return this.salesService.getDashboardData(period, start, end);
+  }
+
+  // Sempre todo o período (ignora a data selecionada no front)
+  @Get('top-videos')
+  getTopVideos(@Query('limit') limit?: string) {
+    return this.salesService.getTopVideos(limit ? Number(limit) : 5);
+  }
+
+  @Get('top-vendedores')
+  getTopVendedores(@Query('limit') limit?: string) {
+    return this.salesService.getTopVendedores(limit ? Number(limit) : 5);
   }
 
   @Get('icons/:uf')
@@ -31,7 +42,7 @@ export class SalesController {
   }
 
   @Get(':videoId')
-  getDealsByVideo(@Param('videoId') videoId: string, @Query('period') period?: string) {
-    return this.salesService.getDealsByVideo(videoId, period);
+  getDealsByVideo(@Param('videoId') videoId: string, @Query('period') period?: string, @Query('start') start?: string, @Query('end') end?: string) {
+    return this.salesService.getDealsByVideo(videoId, period, start, end);
   }
 }

@@ -40,9 +40,9 @@ export class SalesService {
     });
   }
 
-  async getSalesRanking(period: string = 'month'): Promise<SalesRankingItem[]> {
+  async getSalesRanking(period: string = 'month', customStart?: string, customEnd?: string): Promise<SalesRankingItem[]> {
     const isAllPeriod = period === 'all';
-    const { start, end } = this.getPeriodDates(period);
+    const { start, end } = this.getPeriodDates(period, customStart, customEnd);
 
     const startTimeManual = Date.now();
 
@@ -259,8 +259,8 @@ export class SalesService {
     return ranking.sort((a, b) => b.totalRevenue - a.totalRevenue);
   }
 
-  async getSalesSummary(period: string = 'month'): Promise<SalesSummary> {
-    const ranking = await this.getSalesRanking(period);
+  async getSalesSummary(period: string = 'month', customStart?: string, customEnd?: string): Promise<SalesSummary> {
+    const ranking = await this.getSalesRanking(period, customStart, customEnd);
 
     const totalRevenue = ranking.reduce((acc, item) => acc + item.totalRevenue, 0);
     const totalDeals = ranking.reduce((acc, item) => acc + item.dealsCount, 0);
@@ -274,14 +274,14 @@ export class SalesService {
     };
   }
 
-  async getDashboardData(period: string = 'month') {
-    const ranking = await this.getSalesRanking(period);
+  async getDashboardData(period: string = 'month', customStart?: string, customEnd?: string) {
+    const ranking = await this.getSalesRanking(period, customStart, customEnd);
 
     const totalRevenue = ranking.reduce((acc, item) => acc + item.totalRevenue, 0);
     const totalDeals = ranking.reduce((acc, item) => acc + item.dealsCount, 0);
     const totalWon = ranking.reduce((acc, item) => acc + item.wonCount, 0);
 
-    const { start, end } = this.getPeriodDates(period);
+    const { start, end } = this.getPeriodDates(period, customStart, customEnd);
     return {
       summary: {
         totalRevenue,
@@ -293,7 +293,16 @@ export class SalesService {
     };
   }
 
-  private getPeriodDates(period: string): { start: Date | null, end: Date | null } {
+  private getPeriodDates(period: string, customStart?: string, customEnd?: string): { start: Date | null, end: Date | null } {
+    // Período personalizado: interpreta as datas (YYYY-MM-DD) como dia local de Brasília (UTC-3).
+    if (period === 'custom') {
+      if (!customStart || !customEnd) return { start: null, end: null };
+      const start = new Date(`${customStart}T00:00:00.000-03:00`);
+      const end = new Date(`${customEnd}T23:59:59.999-03:00`);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return { start: null, end: null };
+      return { start, end };
+    }
+
     const BR_OFFSET = -3; // Brasília is UTC-3
 
     // 1. Current UTC time
@@ -361,9 +370,9 @@ export class SalesService {
     };
   }
 
-  async getDealsByVideo(videoId: string, period: string = 'month') {
+  async getDealsByVideo(videoId: string, period: string = 'month', customStart?: string, customEnd?: string) {
     const isAllPeriod = period === 'all';
-    const { start, end } = this.getPeriodDates(period);
+    const { start, end } = this.getPeriodDates(period, customStart, customEnd);
     // 1. Fetch video details
     const { data: video } = await this.supabase
       .from('yt_myvideos')
@@ -407,6 +416,100 @@ export class SalesService {
     });
 
     return { video, deals: filteredDeals };
+  }
+
+  // TOP 5 VÍDEOS — sempre todo o período (ignora a data selecionada), ranqueado por receita.
+  async getTopVideos(limit = 5) {
+    const ranking = await this.getSalesRanking('all');
+    return ranking
+      .filter(r => r.totalRevenue > 0)
+      .slice(0, limit)
+      .map(r => ({
+        videoId: r.videoId,
+        videoTitle: r.videoTitle,
+        thumbnailUrl: r.thumbnailUrl,
+        totalRevenue: r.totalRevenue,
+        wonCount: r.wonCount,
+        dealsCount: r.dealsCount,
+      }));
+  }
+
+  // TOP 5 VENDEDORES — sempre todo o período, por receita, considerando os negócios
+  // atribuídos a vídeos via UTM (consistente com o resto do módulo, baseado em links rastreados).
+  async getTopVendedores(limit = 5) {
+    // 1. UTMs atribuídas (links com video_id)
+    const { data: links, error: linksError } = await this.supabase
+      .from('yt_links')
+      .select('utm_content, video_id');
+    if (linksError) {
+      this.logger.error('Error fetching links for vendedores', linksError);
+      return [];
+    }
+
+    const utmVariants = new Set<string>();
+    (links || []).forEach(link => {
+      if (link.utm_content && link.video_id) {
+        const raw = String(link.utm_content).trim();
+        if (!raw) return;
+        utmVariants.add(raw);
+        utmVariants.add(raw.toLowerCase());
+        utmVariants.add(raw.toUpperCase());
+      }
+    });
+
+    const utms = Array.from(utmVariants);
+    if (utms.length === 0) return [];
+
+    // 2. Busca os negócios desses UTMs (todo o período) em paralelo, paginado
+    const utmChunkSize = 200;
+    const pageSize = 1000;
+    const fetchPromises: Promise<any[]>[] = [];
+
+    for (let i = 0; i < utms.length; i += utmChunkSize) {
+      const chunk = utms.slice(i, i + utmChunkSize);
+      fetchPromises.push((async () => {
+        let acc: any[] = [];
+        let page = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await this.supabase
+            .from('hubspot_negocios')
+            .select('proprietario, valor, etapa')
+            .in('utm_content', chunk)
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+          if (error) { this.logger.error('Error fetching deals for vendedores', error); break; }
+          if (data && data.length > 0) {
+            acc = acc.concat(data);
+            if (data.length < pageSize) hasMore = false; else page++;
+          } else {
+            hasMore = false;
+          }
+        }
+        return acc;
+      })());
+    }
+
+    const deals = (await Promise.all(fetchPromises)).flat();
+
+    // 3. Agrega por proprietário (vendedor)
+    const stats = new Map<string, { revenue: number; won: number; deals: number }>();
+    deals.forEach(deal => {
+      const name = (deal.proprietario && String(deal.proprietario).trim()) || 'Sem proprietário';
+      if (!stats.has(name)) stats.set(name, { revenue: 0, won: 0, deals: 0 });
+      const s = stats.get(name)!;
+      s.deals++;
+      const etapa = (deal.etapa || '').toLowerCase();
+      const isWon = etapa.includes('ganho') || etapa.includes('won') || etapa.includes('fechado');
+      if (isWon) {
+        s.won++;
+        s.revenue += Number(deal.valor || 0);
+      }
+    });
+
+    return Array.from(stats.entries())
+      .map(([name, s]) => ({ name, revenue: s.revenue, wonCount: s.won, dealsCount: s.deals }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, limit);
   }
 
   async getIconByUF(uf: string): Promise<string | null> {
