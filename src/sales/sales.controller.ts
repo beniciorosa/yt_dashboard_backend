@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Res, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Res, Query, Body } from '@nestjs/common';
 import { SalesService } from './sales.service';
 
 @Controller('sales')
@@ -18,6 +18,28 @@ export class SalesController {
   @Get('dashboard')
   getDashboardData(@Query('period') period?: string, @Query('start') start?: string, @Query('end') end?: string) {
     return this.salesService.getDashboardData(period, start, end);
+  }
+
+  // Comparação de períodos (aba Análises)
+  @Get('analysis')
+  getAnalysis(
+    @Query('periodA') periodA?: string,
+    @Query('startA') startA?: string,
+    @Query('endA') endA?: string,
+    @Query('periodB') periodB?: string,
+    @Query('startB') startB?: string,
+    @Query('endB') endB?: string,
+    @Query('sellerScope') sellerScope?: string,
+  ) {
+    return this.salesService.getAnalysis({
+      periodA, startA, endA, periodB, startB, endB,
+      sellerScope: sellerScope === 'all' ? 'all' : 'youtube',
+    });
+  }
+
+  @Post('analysis/ai-summary')
+  aiSummary(@Body() body: any) {
+    return this.salesService.aiSummary(body);
   }
 
   // Sempre todo o período (ignora a data selecionada no front)
