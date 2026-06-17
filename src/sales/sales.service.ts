@@ -863,6 +863,102 @@ ${sellers || '(sem dados)'}
     }
   }
 
+  // ROI dos anúncios: cruza o gasto em Promoções (yt_promotions, por vídeo via thumbnail)
+  // com as vendas atribuídas àquele vídeo (UTM → yt_links → hubspot_negocios). Tudo "todo o período".
+  async getPromotionRoi() {
+    const parseNum = (s: any): number => {
+      if (s == null) return 0;
+      if (typeof s === 'number') return s;
+      let str = String(s).replace(/[R$\s]/g, '');
+      if (str.includes(',')) str = str.replace(/\./g, '').replace(',', '.');
+      return parseFloat(str) || 0;
+    };
+    const extractVid = (url?: string): string | null =>
+      (url && (url.match(/\/vi(?:_webp)?\/([\w-]{11})/) || [])[1]) || null;
+
+    // 1. Último batch de promoções
+    const { data: maxRow } = await this.supabase
+      .from('yt_promotions')
+      .select('data_coleta')
+      .order('data_coleta', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const maxColeta = (maxRow as any)?.data_coleta;
+    if (!maxColeta) return { rows: [], summary: { totalAdSpend: 0, totalRevenue: 0, roi: 0, net: 0, promotedVideos: 0 } };
+
+    const { data: promos, error: promoErr } = await this.supabase
+      .from('yt_promotions')
+      .select('titulo, thumbnail_url, custo, impressoes, visualizacoes, inscritos')
+      .eq('data_coleta', maxColeta);
+    if (promoErr) { this.logger.error('getPromotionRoi: erro lendo promoções', promoErr); return { rows: [], summary: { totalAdSpend: 0, totalRevenue: 0, roi: 0, net: 0, promotedVideos: 0 } }; }
+
+    // Agrega gasto/visualizações/inscritos por vídeo (soma das campanhas do vídeo)
+    const adByVideo = new Map<string, { adSpend: number; promoViews: number; subsGained: number; impressions: number; adTitle: string; campaigns: number }>();
+    (promos || []).forEach((p: any) => {
+      const vid = extractVid(p.thumbnail_url);
+      if (!vid) return;
+      if (!adByVideo.has(vid)) adByVideo.set(vid, { adSpend: 0, promoViews: 0, subsGained: 0, impressions: 0, adTitle: p.titulo || '', campaigns: 0 });
+      const a = adByVideo.get(vid)!;
+      a.adSpend += parseNum(p.custo);
+      a.promoViews += parseNum(p.visualizacoes);
+      a.subsGained += parseNum(p.inscritos);
+      a.impressions += parseNum(p.impressoes);
+      a.campaigns++;
+    });
+
+    // 2. Vendas por vídeo (todo o período)
+    const ranking = await this.getSalesRanking('all');
+    const salesByVideo = new Map(ranking.map(r => [r.videoId, r]));
+
+    // 3. Metadados dos vídeos
+    const ids = Array.from(adByVideo.keys());
+    const videoMeta = new Map<string, any>();
+    if (ids.length > 0) {
+      const { data: vids } = await this.supabase.from('yt_myvideos').select('video_id, title, thumbnail_url').in('video_id', ids);
+      (vids || []).forEach((v: any) => videoMeta.set(v.video_id, v));
+    }
+
+    // 4. Monta linhas de ROI
+    const rows = Array.from(adByVideo.entries()).map(([vid, a]) => {
+      const s: any = salesByVideo.get(vid);
+      const revenue = s?.totalRevenue || 0;
+      const leads = s?.dealsCount || 0;
+      const won = s?.wonCount || 0;
+      const meta = videoMeta.get(vid);
+      return {
+        videoId: vid,
+        videoTitle: meta?.title || a.adTitle || 'Vídeo desconhecido',
+        thumbnailUrl: meta?.thumbnail_url || '',
+        campaigns: a.campaigns,
+        adSpend: a.adSpend,
+        promoViews: a.promoViews,
+        subsGained: a.subsGained,
+        impressions: a.impressions,
+        leads,
+        won,
+        revenue,
+        roi: a.adSpend > 0 ? revenue / a.adSpend : 0,            // receita por R$1 investido
+        net: revenue - a.adSpend,                                 // resultado líquido
+        costPerLead: leads > 0 ? a.adSpend / leads : 0,
+        costPerSale: won > 0 ? a.adSpend / won : 0,
+      };
+    }).sort((x, y) => y.net - x.net);
+
+    const totalAdSpend = rows.reduce((acc, r) => acc + r.adSpend, 0);
+    const totalRevenue = rows.reduce((acc, r) => acc + r.revenue, 0);
+    return {
+      rows,
+      summary: {
+        totalAdSpend,
+        totalRevenue,
+        roi: totalAdSpend > 0 ? totalRevenue / totalAdSpend : 0,
+        net: totalRevenue - totalAdSpend,
+        promotedVideos: rows.length,
+        lastColeta: maxColeta,
+      },
+    };
+  }
+
   async getIconByUF(uf: string): Promise<string | null> {
     const normalized = uf.toUpperCase();
     const { data, error } = await this.supabase

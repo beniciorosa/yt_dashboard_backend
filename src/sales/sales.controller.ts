@@ -42,6 +42,12 @@ export class SalesController {
     return this.salesService.aiSummary(body);
   }
 
+  // ROI dos anúncios (gasto em Promoções × vendas atribuídas), todo o período
+  @Get('roi')
+  getPromotionRoi() {
+    return this.salesService.getPromotionRoi();
+  }
+
   // Sempre todo o período (ignora a data selecionada no front)
   @Get('top-videos')
   getTopVideos(@Query('limit') limit?: string) {
