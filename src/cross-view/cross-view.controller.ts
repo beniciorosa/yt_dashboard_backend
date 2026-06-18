@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CrossViewService } from './cross-view.service';
 
 @Controller('cross-view')
@@ -35,7 +35,33 @@ export class CrossViewController {
   }
 
   @Post('analyze')
-  analyze(@Body() body: { videoIds: string[]; model: string }) {
-    return this.svc.analyze(body.videoIds || [], body.model || 'gpt-4o');
+  analyze(@Body() body: { videoIds: string[]; model: string; force?: boolean }) {
+    return this.svc.analyze(body.videoIds || [], body.model || 'gpt-4o', body.force || false);
+  }
+
+  // ----- Histórico -----
+  @Get('analyses')
+  listAnalyses(@Query('limit') limit?: string) {
+    return this.svc.listAnalyses(limit ? parseInt(limit, 10) : 30);
+  }
+
+  @Get('analyses/:id')
+  getAnalysis(@Param('id') id: string) {
+    return this.svc.getAnalysisById(id);
+  }
+
+  @Patch('analyses/:id')
+  updateAnalysis(@Param('id') id: string, @Body() body: { title?: string; favorite?: boolean }) {
+    return this.svc.updateAnalysisMeta(id, body || {});
+  }
+
+  @Delete('analyses/:id')
+  deleteAnalysis(@Param('id') id: string) {
+    return this.svc.deleteAnalysis(id);
+  }
+
+  @Post('brief')
+  brief(@Body() body: { id: string | number; model?: string; theme?: string }) {
+    return this.svc.generateBrief(body.id, body.model, body.theme);
   }
 }

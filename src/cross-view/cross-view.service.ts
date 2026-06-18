@@ -337,18 +337,20 @@ export class CrossViewService {
   }
 
   // ---------------------------------------------------------------- ANALYZE
-  async analyze(videoIds: string[], model: string) {
+  async analyze(videoIds: string[], model: string, force = false) {
     if (!videoIds.length) throw new HttpException('Selecione ao menos um vídeo', HttpStatus.BAD_REQUEST);
 
     const sorted = [...videoIds].sort();
     const setHash = createHash('sha256').update(JSON.stringify([sorted, model])).digest('hex');
 
-    const { data: cachedAnalysis } = await this.supabase
-      .from('cv_analyses')
-      .select('*')
-      .eq('set_hash', setHash)
-      .maybeSingle();
-    if (cachedAnalysis) return { cached: true, ...(cachedAnalysis as any) };
+    if (!force) {
+      const { data: cachedAnalysis } = await this.supabase
+        .from('cv_analyses')
+        .select('*')
+        .eq('set_hash', setHash)
+        .maybeSingle();
+      if (cachedAnalysis) return { cached: true, ...(cachedAnalysis as any) };
+    }
 
     const { data: contents } = await this.supabase.from('cv_video_content').select('*').in('video_id', videoIds);
     if (!contents || contents.length === 0) {
@@ -400,6 +402,8 @@ export class CrossViewService {
 
     const salesSnapshot = videos.map((v) => ({ videoId: v.videoId, ...v.salesFacts }));
 
+    // created_at é setado explicitamente para refletir "reanalisado agora" no force re-run.
+    // title/favorite/brief NÃO entram no payload -> são preservados no upsert por set_hash.
     const row = {
       set_hash: setHash,
       video_ids: videoIds,
@@ -410,6 +414,7 @@ export class CrossViewService {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cost_usd: costUsd,
+      created_at: new Date().toISOString(),
     };
     const { data: inserted, error } = await this.supabase
       .from('cv_analyses')
@@ -419,6 +424,81 @@ export class CrossViewService {
     if (error) this.logger.error(`[Analyze] upsert erro: ${error.message}`);
 
     return { cached: false, ...((inserted as any) || row) };
+  }
+
+  // ---------------------------------------------------------------- HISTÓRICO
+  async listAnalyses(limit = 30) {
+    const { data, error } = await this.supabase
+      .from('cv_analyses')
+      .select('id, set_hash, video_ids, model, cost_usd, input_tokens, output_tokens, created_at, title, favorite, brief')
+      .order('favorite', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    const items = (data || []).map((r: any) => ({
+      id: r.id,
+      set_hash: r.set_hash,
+      video_ids: r.video_ids,
+      videoCount: (r.video_ids || []).length,
+      model: r.model,
+      cost_usd: r.cost_usd,
+      input_tokens: r.input_tokens,
+      output_tokens: r.output_tokens,
+      created_at: r.created_at,
+      title: r.title,
+      favorite: r.favorite,
+      hasBrief: !!r.brief,
+    }));
+    return { items };
+  }
+
+  async getAnalysisById(id: string | number) {
+    const { data, error } = await this.supabase.from('cv_analyses').select('*').eq('id', id).maybeSingle();
+    if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    if (!data) throw new HttpException('Análise não encontrada', HttpStatus.NOT_FOUND);
+    const videoIds = (data as any).video_ids || [];
+    const { data: vids } = await this.supabase
+      .from('cv_video_content')
+      .select('video_id, title, thumbnail_url')
+      .in('video_id', videoIds);
+    return { analysis: data, videos: vids || [] };
+  }
+
+  async updateAnalysisMeta(id: string | number, patch: { title?: string; favorite?: boolean }) {
+    const update: any = {};
+    if (patch.title !== undefined) update.title = patch.title;
+    if (patch.favorite !== undefined) update.favorite = patch.favorite;
+    if (Object.keys(update).length === 0) return { id, updated: false };
+    const { data, error } = await this.supabase
+      .from('cv_analyses')
+      .update(update)
+      .eq('id', id)
+      .select('id, title, favorite')
+      .maybeSingle();
+    if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    return { id, updated: true, ...((data as any) || {}) };
+  }
+
+  async deleteAnalysis(id: string | number) {
+    const { error } = await this.supabase.from('cv_analyses').delete().eq('id', id);
+    if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    return { id, deleted: true };
+  }
+
+  async generateBrief(id: string | number, model?: string, theme?: string) {
+    const { data: row } = await this.supabase.from('cv_analyses').select('*').eq('id', id).maybeSingle();
+    if (!row) throw new HttpException('Análise não encontrada', HttpStatus.NOT_FOUND);
+    const useModel = model || (row as any).model || 'gpt-4o';
+    const result = (row as any).result || {};
+    const { result: brief, usage, modelUsed } = await this.openaiService.generateVideoBrief({
+      crossInsights: result.crossInsights,
+      perVideo: result.perVideo,
+      theme,
+      model: useModel,
+    });
+    const { error } = await this.supabase.from('cv_analyses').update({ brief, brief_model: modelUsed }).eq('id', id);
+    if (error) this.logger.error(`[Brief] update erro: ${error.message}`);
+    return { id, brief, brief_model: modelUsed, usage };
   }
 
   // ---------------------------------------------------------------- helpers

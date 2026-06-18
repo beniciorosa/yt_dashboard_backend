@@ -637,4 +637,61 @@ export class OpenaiService {
         }
         return { result: this.safeParseJson(res.text), usage: res.usage, modelUsed: res.model };
     }
+
+    /** Gera um brief do próximo vídeo a partir dos padrões dos vídeos que mais converteram. */
+    async generateVideoBrief(payload: {
+        crossInsights?: any;
+        perVideo?: any[];
+        theme?: string;
+        model: string;
+    }): Promise<{ result: any; usage: any; modelUsed: string }> {
+        const ci = payload.crossInsights ? JSON.stringify(payload.crossInsights) : '(sem insights cruzados)';
+        const winners = (payload.perVideo || [])
+            .slice()
+            .sort((a: any, b: any) => (b?.revenue || 0) - (a?.revenue || 0) || (b?.won || 0) - (a?.won || 0))
+            .slice(0, 5)
+            .map(
+                (v: any) =>
+                    `- ${v.videoId}: vendas=${v.won ?? 0}, receita=${v.revenue ?? 0}, ticket=${v.ticketMedio ?? 0}, publico=${v.audienceProfile?.tier || '?'}; drivers=${JSON.stringify(v.conversionDrivers || {})}`,
+            )
+            .join('\n');
+
+        const system =
+            'Você é um roteirista e estrategista de YouTube focado em conversão para vendas. Responda APENAS JSON, sem texto fora do JSON.';
+        const user =
+            `Com base nos padrões dos vídeos que MAIS converteram (vendas/receita), monte um BRIEF para o PRÓXIMO vídeo.\n\n` +
+            `PADRÕES/INSIGHTS CRUZADOS: ${ci}\n\n` +
+            `VÍDEOS VENCEDORES (resumo):\n${winners || '(sem dados)'}\n\n` +
+            (payload.theme ? `TEMA/PRODUTO DESEJADO PARA O PRÓXIMO VÍDEO: ${payload.theme}\n\n` : '') +
+            `Gere um JSON com:\n` +
+            `"titulos" (array de 3-5 títulos altamente clicáveis no estilo dos vencedores),\n` +
+            `"thumbnail" ({ "conceito": string, "texto": string (texto curto da arte), "elementos": [string] }),\n` +
+            `"hook" (os primeiros 15-20s falados),\n` +
+            `"roteiro" (array de blocos { "secao": string, "objetivo": string, "pontos": [string] }),\n` +
+            `"cta" (chamada para ação conectando o conteúdo à oferta),\n` +
+            `"publico_alvo" (quem é, nível e dores),\n` +
+            `"gatilhos" (array de gatilhos de conversão a usar).`;
+
+        const attempt = async (model: string, useJson: boolean, useSystem: boolean) => {
+            const messages: any[] = useSystem
+                ? [{ role: 'system', content: system }, { role: 'user', content: user }]
+                : [{ role: 'user', content: `${system}\n\n${user}` }];
+            const req: any = { model, messages };
+            if (useJson) req.response_format = { type: 'json_object' };
+            const c = await this.openai.chat.completions.create(req);
+            return { text: c.choices[0].message.content || '', usage: c.usage, model };
+        };
+
+        let res: { text: string; usage: any; model: string };
+        try {
+            res = await attempt(payload.model, true, true);
+        } catch (e1: any) {
+            try {
+                res = await attempt(payload.model, false, false);
+            } catch {
+                res = await attempt('gpt-4o', true, true);
+            }
+        }
+        return { result: this.safeParseJson(res.text), usage: res.usage, modelUsed: res.model };
+    }
 }
