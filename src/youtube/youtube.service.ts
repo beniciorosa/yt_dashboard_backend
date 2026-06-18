@@ -187,6 +187,55 @@ export class YoutubeService {
         return result.access_token;
     }
 
+    /**
+     * Tenta baixar a legenda (transcrição) de um vídeo PRÓPRIO via API do YouTube
+     * (escopo youtube.force-ssl, já autorizado). Retorna null se não houver faixa baixável
+     * (ex.: legenda automática que a API recusa com 403) — nesse caso o chamador faz fallback.
+     */
+    async getCaptionTranscript(channelId: string, videoId: string): Promise<{ text: string; lang: string } | null> {
+        const token = await this.refreshAccessToken(channelId);
+
+        // 1. Lista as faixas de legenda do vídeo
+        let list: any;
+        try {
+            list = await this.proxyAction(token, 'GET', 'captions', undefined, { part: 'snippet', videoId });
+        } catch (e: any) {
+            this.logger.warn(`[Captions] list falhou p/ ${videoId}: ${e?.message || e}`);
+            return null;
+        }
+
+        const items: any[] = list?.items || [];
+        if (items.length === 0) return null;
+
+        // 2. Preferência: faixa NÃO-ASR em pt > qualquer pt > não-ASR > a primeira
+        const score = (it: any) => {
+            const lang = (it.snippet?.language || '').toLowerCase();
+            const isAsr = it.snippet?.trackKind === 'asr';
+            let s = 0;
+            if (lang.startsWith('pt')) s += 2;
+            if (!isAsr) s += 1;
+            return s;
+        };
+        items.sort((a, b) => score(b) - score(a));
+
+        // 3. Tenta baixar cada faixa em ordem de preferência (algumas dão 403 — segue p/ próxima)
+        for (const track of items) {
+            const id = track.id;
+            const lang = track.snippet?.language || 'pt';
+            try {
+                const srt = await this.proxyAction(token, 'GET', `captions/${id}`, undefined, { tfmt: 'srt' });
+                const text = typeof srt === 'string' ? srt : '';
+                if (text && text.trim().length > 0) {
+                    return { text, lang };
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Captions] download faixa ${id} (${lang}) falhou p/ ${videoId}: ${e?.message || e}`);
+            }
+        }
+
+        return null;
+    }
+
     async syncDetailedEngagement(
         channelId: string,
         specificVideoIds?: string[],

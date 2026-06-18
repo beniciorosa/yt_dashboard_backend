@@ -11,6 +11,7 @@ import { UtmModule } from './utm/utm.module';
 import { ActiveCampaignModule } from './active-campaign/active-campaign.module';
 import { CommentsModule } from './comments/comments.module';
 import { GeniusModule } from './genius/genius.module';
+import { CrossViewModule } from './cross-view/cross-view.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { GeniusModule } from './genius/genius.module';
     ActiveCampaignModule,
     CommentsModule,
     GeniusModule,
+    CrossViewModule,
   ],
   controllers: [AppController],
   providers: [AppService],

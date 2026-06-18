@@ -243,6 +243,18 @@ export class OpenaiService {
         }
     }
 
+    /** Transcreve um buffer de áudio (fallback Whisper do Cross-View). Retorna SRT. */
+    async transcribeBuffer(buffer: Buffer, filename = 'audio.m4a'): Promise<string> {
+        const { toFile } = await import('openai/uploads');
+        const transcription = await this.openai.audio.transcriptions.create({
+            file: await toFile(buffer, filename),
+            model: 'whisper-1',
+            language: 'pt',
+            response_format: 'srt',
+        });
+        return transcription as unknown as string;
+    }
+
     async generateSlug(title: string): Promise<string> {
         const prompt = `
             Role: SEO Expert for YouTube.
@@ -426,5 +438,203 @@ export class OpenaiService {
                 throw new Error("Failed to generate analysis");
             }
         }
+    }
+
+    // ===================== CROSS-VIEW (análise cruzada de vídeos) =====================
+
+    /** Lista os ids de modelos disponíveis na chave atual (para o seletor de modelo). */
+    async listModelIds(): Promise<string[]> {
+        try {
+            const list = await this.openai.models.list();
+            return (list.data || []).map((m: any) => m.id);
+        } catch (error: any) {
+            console.error('Erro ao listar modelos da OpenAI:', error?.message || error);
+            return [];
+        }
+    }
+
+    /** Lê uma thumbnail (visão) e devolve um descritor estruturado. Sempre usa gpt-4o. */
+    async describeThumbnail(imageUrl: string): Promise<any> {
+        if (!imageUrl) return null;
+        try {
+            const completion = await this.openai.chat.completions.create({
+                model: 'gpt-4o',
+                response_format: { type: 'json_object' },
+                messages: [
+                    { role: 'system', content: 'Você analisa thumbnails de vídeos do YouTube e responde APENAS JSON.' },
+                    {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'text',
+                                text:
+                                    'Analise esta thumbnail de um vídeo do YouTube. Responda só um JSON com os campos: ' +
+                                    '"texto_na_imagem" (todo texto visível, string), "tem_rosto" (boolean), "emocao" (string), ' +
+                                    '"promessa_visual" (o que a imagem promete, string), "estilo" (string), ' +
+                                    '"cores_dominantes" (array de strings), "gatilhos" (array de gatilhos de clique).',
+                            },
+                            { type: 'image_url', image_url: { url: imageUrl } },
+                        ] as any,
+                    },
+                ],
+            });
+            const content = completion.choices[0].message.content;
+            return content ? JSON.parse(content) : null;
+        } catch (error: any) {
+            console.error('Erro em describeThumbnail:', error?.message || error);
+            return null;
+        }
+    }
+
+    /** Gera um "fingerprint" estruturado do conteúdo do vídeo (texto). */
+    async fingerprintVideo(
+        input: { title?: string; description?: string; transcript?: string },
+        model = 'gpt-4o',
+    ): Promise<any> {
+        const transcript = (input.transcript || '').substring(0, 24000);
+        const description = (input.description || '').substring(0, 4000);
+        const prompt =
+            `Você é um estrategista sênior de YouTube. Analise o conteúdo abaixo e extraia um "fingerprint" do vídeo.\n\n` +
+            `TÍTULO: ${input.title || '(sem título)'}\n` +
+            `DESCRIÇÃO: ${description || '(sem descrição)'}\n` +
+            `TRANSCRIÇÃO (pode estar truncada):\n${transcript || '(sem transcrição disponível)'}\n\n` +
+            `Responda APENAS um JSON com os campos:\n` +
+            `"hook" (como o vídeo abre / promessa inicial),\n` +
+            `"promessa" (a promessa central do vídeo),\n` +
+            `"topicos" (array dos principais assuntos),\n` +
+            `"sinais_de_nivel" (pistas de que o conteúdo é para público iniciante, intermediário ou avançado — explique),\n` +
+            `"estrutura" (como o conteúdo é estruturado),\n` +
+            `"cta" (qual chamada para ação aparece, se houver),\n` +
+            `"tom" (tom de voz),\n` +
+            `"palavras_chave" (array).`;
+        try {
+            const completion = await this.openai.chat.completions.create({
+                model,
+                response_format: { type: 'json_object' },
+                messages: [
+                    { role: 'system', content: 'Você é um estrategista de YouTube e responde APENAS JSON.' },
+                    { role: 'user', content: prompt },
+                ],
+            });
+            const content = completion.choices[0].message.content;
+            return content ? JSON.parse(content) : null;
+        } catch (error: any) {
+            console.error('Erro em fingerprintVideo:', error?.message || error);
+            return null;
+        }
+    }
+
+    private safeParseJson(text: string): any {
+        if (!text) return null;
+        let t = text.trim();
+        t = t.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+        try {
+            return JSON.parse(t);
+        } catch {
+            const start = t.indexOf('{');
+            const end = t.lastIndexOf('}');
+            if (start >= 0 && end > start) {
+                try {
+                    return JSON.parse(t.substring(start, end + 1));
+                } catch {
+                    /* noop */
+                }
+            }
+            return { _parseError: true, raw: text.substring(0, 2000) };
+        }
+    }
+
+    private buildCrossAnalysisPrompt(videos: any[]): string {
+        const brl = (n: number) => (n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const blocks = videos
+            .map((v, i) => {
+                const s = v.salesFacts || {};
+                const fp = v.fingerprint ? JSON.stringify(v.fingerprint) : '(sem fingerprint)';
+                const th = v.thumbDescriptor ? JSON.stringify(v.thumbDescriptor) : '(sem leitura de thumbnail)';
+                const transcript = (v.transcript || '').substring(0, 8000);
+                return (
+                    `### VÍDEO ${i + 1} — id=${v.videoId}\n` +
+                    `Título: ${v.title || ''}\n` +
+                    `Descrição (trunc): ${(v.description || '').substring(0, 1500)}\n` +
+                    `FATOS DE VENDA (all-time, atribuídos por UTM): leads=${s.leads ?? 0}, vendas=${s.won ?? 0}, ` +
+                    `receita=R$ ${brl(s.revenue ?? 0)}, ticket_medio=R$ ${brl(s.ticketMedio ?? 0)}, conversao=${(s.conversionRate ?? 0).toFixed(1)}%\n` +
+                    `Mix de produtos: ${(s.productMix || []).map((p: any) => `${p.name} (${p.count})`).join(', ') || '(nenhum)'}\n` +
+                    `Fingerprint do conteúdo: ${fp}\n` +
+                    `Leitura da thumbnail: ${th}\n` +
+                    `Transcrição (trunc): ${transcript || '(sem transcrição)'}\n`
+                );
+            })
+            .join('\n');
+
+        return (
+            `Você vai comparar ${videos.length} vídeos de um mesmo canal para descobrir POR QUE alguns convertem muito mais que outros (em leads E em vendas reais), e traçar o PERFIL DE PÚBLICO de cada um.\n\n` +
+            `Dados de cada vídeo:\n\n${blocks}\n\n` +
+            `INSTRUÇÕES:\n` +
+            `- Use os FATOS DE VENDA como verdade. Não invente números.\n` +
+            `- Para o perfil de público (iniciante / intermediário / avançado), INFIRA a partir do ticket médio, do volume de vendas e do mix de produtos + o conteúdo. NÃO use faixas fixas; justifique com base nos dados.\n` +
+            `- Identifique os fatores de conteúdo (hook, título, thumbnail, profundidade, CTA, tema) que separam os que mais venderam dos que menos venderam.\n\n` +
+            `Responda APENAS um JSON com este formato exato:\n` +
+            `{\n` +
+            `  "perVideo": [{ "videoId": string, "audienceProfile": { "tier": string, "justificativa": string }, "ticketMedio": number, "leads": number, "won": number, "revenue": number, "productMix": [{"name": string, "count": number}], "conversionDrivers": { "hook": string, "titulo": string, "thumbnail": string, "profundidade": string, "cta": string }, "porqueConverteuOuNao": string }],\n` +
+            `  "crossInsights": { "fatoresDeConversao": [{ "fator": string, "explicacao": string, "evidencia": string }], "padroesDeTitulo": string, "padroesDeThumbnail": string, "padroesDeConteudo": string, "audienceSegmentMap": [{ "segmento": string, "videoIds": [string] }], "productAffinity": [{ "produto": string, "tipoDeConteudo": string }], "recommendations": [string] }\n` +
+            `}`
+        );
+    }
+
+    /** Análise cruzada dos vídeos selecionados. Robusta a modelos exigentes; faz fallback p/ gpt-4o. */
+    async crossAnalyze(payload: { videos: any[]; model: string }): Promise<{ result: any; usage: any; modelUsed: string }> {
+        const system =
+            'Você é um consultor de elite de YouTube e de vendas. Cruza conteúdo de vídeos com resultados reais de venda e responde APENAS JSON, sem texto fora do JSON.';
+        const user = this.buildCrossAnalysisPrompt(payload.videos);
+
+        // Modelos *-pro da família GPT-5 exigem a Responses API.
+        if (/gpt-5.*pro/i.test(payload.model)) {
+            try {
+                const r: any = await (this.openai as any).responses.create({
+                    model: payload.model,
+                    input: [{ role: 'user', content: [{ type: 'input_text', text: `${system}\n\n${user}` }] }],
+                    reasoning: { effort: 'medium' },
+                });
+                let text: string = r.output_text || '';
+                if (!text && Array.isArray(r.output)) {
+                    for (const item of r.output) {
+                        if (item.type === 'message' && Array.isArray(item.content)) {
+                            const ti = item.content.find((c: any) => c.type === 'output_text');
+                            if (ti?.text) {
+                                text = ti.text;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (text) return { result: this.safeParseJson(text), usage: r.usage, modelUsed: payload.model };
+            } catch (ePro: any) {
+                console.warn(`crossAnalyze: Responses API falhou p/ ${payload.model} (${ePro?.message}). Fallback chat/gpt-4o.`);
+            }
+        }
+
+        const attempt = async (model: string, useJsonFormat: boolean, useSystem: boolean) => {
+            const messages: any[] = useSystem
+                ? [{ role: 'system', content: system }, { role: 'user', content: user }]
+                : [{ role: 'user', content: `${system}\n\n${user}` }];
+            const req: any = { model, messages };
+            if (useJsonFormat) req.response_format = { type: 'json_object' };
+            const c = await this.openai.chat.completions.create(req);
+            return { text: c.choices[0].message.content || '', usage: c.usage, model };
+        };
+
+        let res: { text: string; usage: any; model: string };
+        try {
+            res = await attempt(payload.model, true, true);
+        } catch (e1: any) {
+            console.warn(`crossAnalyze: modelo ${payload.model} recusou json/system (${e1?.message}). Tentando modo simples...`);
+            try {
+                res = await attempt(payload.model, false, false);
+            } catch (e2: any) {
+                console.warn(`crossAnalyze: modelo ${payload.model} falhou (${e2?.message}). Fallback gpt-4o.`);
+                res = await attempt('gpt-4o', true, true);
+            }
+        }
+        return { result: this.safeParseJson(res.text), usage: res.usage, modelUsed: res.model };
     }
 }
