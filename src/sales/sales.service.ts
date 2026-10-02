@@ -50,48 +50,12 @@ export class SalesService {
 
     const startTimeManual = Date.now();
 
-    // 1. Fetch LINKS first to get relevant UTMs
-    let links: any[] = [];
-    try {
-      this.logger.log('Fetching links from yt_links...');
-      const { data, error: linksError } = await this.supabase
-        .from('yt_links')
-        .select('*');
-
-      if (linksError) throw linksError;
-      links = data || [];
-      this.logger.log(`Found ${links.length} total links in yt_links`);
-    } catch (e: any) {
-      this.logger.error('Error fetching links from Supabase', { message: e.message, code: e.code });
-      return [];
-    }
-
-    if (!links || links.length === 0) {
-      this.logger.warn('No links found in yt_links table (or connection failed)');
-      return [];
-    }
-
-    const utmToLinkMap = new Map<string, any>();
-    const utmVariants = new Set<string>();
-
-    links.forEach(link => {
-      if (link.utm_content) {
-        const raw = String(link.utm_content).trim();
-        const lower = raw.toLowerCase();
-        const upper = raw.toUpperCase();
-
-        utmToLinkMap.set(lower, link);
-        utmVariants.add(raw);
-        utmVariants.add(lower);
-        utmVariants.add(upper);
-      }
-    });
-
-    this.logger.log(`Generated ${utmVariants.size} UTM variants from links`);
-    if (utmVariants.size === 0) {
-      this.logger.warn('No utm_content found in any of the fetched links');
-      return [];
-    }
+    // 1. UTMs atribuídas a vídeo (link cadastrado, videoId no slug ou vínculo manual)
+    const { utmToVideo, variants } = await this.loadAttributedLinks();
+    const utmToLinkMap = new Map<string, { video_id: string }>();
+    utmToVideo.forEach((video_id, utm) => utmToLinkMap.set(utm, { video_id }));
+    const utmVariants = new Set<string>(variants);
+    if (utmVariants.size === 0) return [];
     const utmsToQuery = Array.from(utmVariants);
     this.logger.log(`Querying hubspot_negocios for UTMs: ${utmsToQuery.slice(0, 5).join(', ')}${utmsToQuery.length > 5 ? '...' : ''}`);
 
@@ -384,17 +348,9 @@ export class SalesService {
       .eq('video_id', videoId)
       .single();
 
-    // 2. Find links for this video
-    const { data: links } = await this.supabase
-      .from('yt_links')
-      .select('utm_content')
-      .eq('video_id', videoId);
-
-    if (!links || links.length === 0) {
-      return { video, deals: [] };
-    }
-
-    const utms = links.map(l => l.utm_content).filter(Boolean);
+    // 2. UTMs atribuídas a este vídeo
+    const { utmToVideo, variants } = await this.loadAttributedLinks();
+    const utms = variants.filter(v => utmToVideo.get(v.trim().toLowerCase()) === videoId);
     if (utms.length === 0) {
       return { video, deals: [] };
     }
@@ -541,20 +497,27 @@ export class SalesService {
     return { isLead, won, lost, revenue: won ? Number(deal.valor || 0) : 0 };
   }
 
+  /**
+   * Mapa UTM → vídeo vindo da visão de atribuição do banco (v_deal_attribution), a mesma fonte
+   * das telas de Atribuição e Closers. `variants` são os valores exatos gravados nos negócios,
+   * usados no filtro `.in('utm_content', ...)`.
+   */
+  private attributionCache: { at: number; utmToVideo: Map<string, string>; variants: string[] } | null = null;
+
   private async loadAttributedLinks() {
-    const { data: links, error } = await this.supabase.from('yt_links').select('utm_content, video_id');
-    if (error) throw error;
+    if (this.attributionCache && Date.now() - this.attributionCache.at < 60_000) return this.attributionCache;
+
+    const { data, error } = await this.supabase.rpc('attribution_utm_map');
+    if (error) throw new Error(`attribution_utm_map: ${error.message}`);
+
     const utmToVideo = new Map<string, string>();
     const variants = new Set<string>();
-    (links || []).forEach((l: any) => {
-      if (l.utm_content && l.video_id) {
-        const raw = String(l.utm_content).trim();
-        if (!raw) return;
-        utmToVideo.set(raw.toLowerCase(), l.video_id);
-        variants.add(raw); variants.add(raw.toLowerCase()); variants.add(raw.toUpperCase());
-      }
+    (data || []).forEach((row: { utm_content: string; video_id: string }) => {
+      utmToVideo.set(String(row.utm_content).trim().toLowerCase(), row.video_id);
+      variants.add(row.utm_content);
     });
-    return { utmToVideo, variants: Array.from(variants) };
+    this.attributionCache = { at: Date.now(), utmToVideo, variants: Array.from(variants) };
+    return this.attributionCache;
   }
 
   private async fetchAttributedDeals(variants: string[]) {

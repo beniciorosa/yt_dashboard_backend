@@ -307,6 +307,21 @@ export class OpenaiService {
         }
     }
 
+    /** Chat Completions com resposta JSON obrigatória. Lança se o modelo não devolver JSON válido. */
+    async completeJson<T = any>(system: string, user: string, model = 'gpt-4o-mini'): Promise<T> {
+        const completion = await this.openai.chat.completions.create({
+            model,
+            response_format: { type: 'json_object' },
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: user },
+            ],
+        });
+        const content = completion.choices[0]?.message?.content;
+        if (!content) throw new Error(`Resposta vazia do modelo ${model}`);
+        return JSON.parse(content) as T;
+    }
+
     async generateText(prompt: string, model?: string): Promise<string> {
         const targetModel = model || 'gpt-5.2-pro';
 

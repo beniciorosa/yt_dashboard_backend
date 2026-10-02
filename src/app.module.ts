@@ -12,6 +12,8 @@ import { CommentsModule } from './comments/comments.module';
 import { GeniusModule } from './genius/genius.module';
 import { CrossViewModule } from './cross-view/cross-view.module';
 import { SupabaseModule } from './supabase/supabase.module';
+import { AttributionModule } from './attribution/attribution.module';
+import { HubspotModule } from './hubspot/hubspot.module';
 import { AuthGuard } from './auth/auth.guard';
 
 @Module({
@@ -27,6 +29,8 @@ import { AuthGuard } from './auth/auth.guard';
     CommentsModule,
     GeniusModule,
     CrossViewModule,
+    AttributionModule,
+    HubspotModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
