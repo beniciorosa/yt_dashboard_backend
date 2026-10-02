@@ -1,0 +1,1 @@
+export const SUPABASE_ADMIN = 'SUPABASE_ADMIN';

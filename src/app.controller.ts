@@ -1,23 +1,26 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { AppService } from './app.service';
 import { CompetitorsService } from './competitors/competitors.service';
 import { SalesService } from './sales/sales.service';
 import { YoutubeService } from './youtube/youtube.service';
+import { CronAccess } from './auth/auth.guard';
+import { SyncRunsService } from './supabase/sync-runs.service';
 
 @Controller()
 export class AppController {
   constructor(
-    private readonly appService: AppService,
     private readonly competitorsService: CompetitorsService,
     private readonly salesService: SalesService,
-    private readonly youtubeService: YoutubeService
+    private readonly youtubeService: YoutubeService,
+    private readonly syncRuns: SyncRunsService,
   ) { }
 
+  @CronAccess()
   @Get('update')
   async update(): Promise<string> {
-    return await this.competitorsService.updateAll();
+    return await this.syncRuns.track('competitors', () => this.competitorsService.updateAll());
   }
 
+  @CronAccess()
   @Get('sync-my-videos')
   async syncMyVideos(
     @Query('channelId') channelId: string,
@@ -35,10 +38,17 @@ export class AppController {
     const maxVideos = limit ? Number(limit) : Number(process.env.SYNC_MAX_VIDEOS) || undefined;
     const timeBudgetMs = budgetMs ? Number(budgetMs) : Number(process.env.SYNC_TIME_BUDGET_MS) || 50000;
 
-    return await this.youtubeService.syncDetailedEngagement(channelId, undefined, shouldDeepDive, {
-      maxVideos,
-      timeBudgetMs,
-    });
+    return await this.syncRuns.track(
+      'my-videos',
+      () => this.youtubeService.syncDetailedEngagement(channelId, undefined, shouldDeepDive, { maxVideos, timeBudgetMs }),
+      (summary) => (summary.failedBatches > 0 ? 'partial' : 'success'),
+    );
+  }
+
+  /** Última execução de cada sincronização — alimenta o selo de frescor dos dados na UI. */
+  @Get('sync-status')
+  syncStatus() {
+    return this.syncRuns.latest();
   }
 
   @Get('s_card')

@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+// Leituras públicas da Data API que o frontend pode pedir pelo proxy (usa a API key do servidor).
+const PROXY_ENDPOINTS = new Set(['channels', 'videos', 'search', 'playlistItems', 'playlists', 'commentThreads', 'comments']);
+
 @Injectable()
 export class YoutubeService {
     private readonly logger = new Logger(YoutubeService.name);
@@ -23,6 +26,9 @@ export class YoutubeService {
     }
 
     async proxy(endpoint: string, params: Record<string, string>) {
+        if (!PROXY_ENDPOINTS.has(endpoint)) {
+            throw { response: { status: 400, data: `Endpoint não permitido: ${endpoint}` }, message: 'Endpoint não permitido' };
+        }
         const url = new URL(`${this.baseUrl}/${endpoint}`);
 
         Object.keys(params).forEach(key => {
@@ -138,6 +144,79 @@ export class YoutubeService {
         return { success: true };
     }
 
+    private googleOAuthCredentials() {
+        const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+        const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
+        if (!clientId || !clientSecret) {
+            throw new Error('OAuth não configurado no backend: defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nas variáveis de ambiente (Vercel).');
+        }
+        return { clientId, clientSecret };
+    }
+
+    /**
+     * Troca o `code` do consentimento Google por tokens — no servidor, para o client secret
+     * nunca ir ao navegador. O refresh_token fica só em yt_auth; o cliente recebe apenas o
+     * access_token de curta duração.
+     */
+    async exchangeAuthCode(code: string, redirectUri: string) {
+        const { clientId, clientSecret } = this.googleOAuthCredentials();
+        const response = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                code,
+                client_id: clientId,
+                client_secret: clientSecret,
+                redirect_uri: redirectUri,
+                grant_type: 'authorization_code',
+            }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.access_token) {
+            throw new Error(`Falha na troca do código OAuth (${result?.error || response.status}): ${result?.error_description || ''}`);
+        }
+
+        const channelId = await this.channelIdOf(result.access_token);
+
+        if (result.refresh_token) await this.saveRefreshToken(channelId, result.refresh_token);
+
+        return { access_token: result.access_token as string, expires_in: Number(result.expires_in) || 3599, channelId };
+    }
+
+    /** Guarda o refresh_token do login Google do app; o canal é descoberto pelo próprio token. */
+    async storeProviderRefreshToken(accessToken: string, refreshToken: string) {
+        const channelId = await this.channelIdOf(accessToken);
+        await this.saveRefreshToken(channelId, refreshToken);
+        return { channelId };
+    }
+
+    private async channelIdOf(accessToken: string): Promise<string> {
+        const res = await fetch(`${this.baseUrl}/channels?part=id&mine=true`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        const channelId: string | undefined = data.items?.[0]?.id;
+        if (!channelId) throw new Error('A conta Google autorizada não tem um canal do YouTube.');
+        return channelId;
+    }
+
+    /** Access token novo para o navegador, a partir do refresh_token guardado no servidor. */
+    async issueAccessToken(channelId?: string) {
+        let id = channelId;
+        if (!id) {
+            const { data } = await this.supabase
+                .from('yt_auth')
+                .select('channel_id')
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            id = data?.channel_id;
+        }
+        if (!id) throw new Error('Nenhum canal conectado. Conecte o canal do YouTube nas configurações.');
+        const access_token = await this.refreshAccessToken(id);
+        return { access_token, expires_in: 3599, channelId: id };
+    }
+
     async refreshAccessToken(channelId: string) {
         const { data, error } = await this.supabase
             .from('yt_auth')
@@ -149,14 +228,7 @@ export class YoutubeService {
             throw new Error(`Refresh token ausente para o canal ${channelId}. Faça login novamente no app para reconectar o canal.`);
         }
 
-        const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
-        const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
-
-        // Sem essas credenciais o backend NÃO consegue trocar o refresh_token por um access_token.
-        // Elas precisam estar nas variáveis de ambiente do backend (painel da Vercel) — não ficam no .env do repo.
-        if (!clientId || !clientSecret) {
-            throw new Error('OAuth não configurado no backend: defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nas variáveis de ambiente (Vercel). Sem elas, a sincronização do canal sempre falha.');
-        }
+        const { clientId, clientSecret } = this.googleOAuthCredentials();
 
         const response = await fetch('https://oauth2.googleapis.com/token', {
             method: 'POST',
@@ -415,99 +487,76 @@ export class YoutubeService {
 
         // B. Health Summary (Analytics API)
         // Buscamos o set completo de métricas que a tabela yt_myvideos espera
-        const metricsStr = 'views,estimatedMinutesWatched,estimatedRevenue,averageViewDuration,averageViewPercentage,subscribersGained,impressions,ctr,engagedViews,endScreenElementClickThroughRate';
-        const url = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${metricsStr}&dimensions=video&filters=video==${idsStr}`;
+        // Impressões e CTR de thumbnail NÃO existem nas consultas direcionadas da Analytics API
+        // (só nos relatórios de alcance da Reporting API) — pedir essas métricas devolve 400 e
+        // zerava todas as outras. As colunas impressions/click_through_rate não são tocadas aqui.
+        const baseMetrics = ['views', 'engagedViews', 'estimatedMinutesWatched', 'averageViewDuration', 'averageViewPercentage', 'subscribersGained'];
+        const analyticsQuery = (metrics: string[]) =>
+            `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${metrics.join(',')}&dimensions=video&filters=video==${idsStr}&sort=-views&maxResults=200`;
 
-        let response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        let hasRevenue = true;
+        let metrics = [...baseMetrics, 'estimatedRevenue'];
+        let response = await fetch(analyticsQuery(metrics), { headers: { Authorization: `Bearer ${token}` } });
+
+        if (!response.ok && (response.status === 403 || response.status === 400)) {
+            // Canal fora do YPP ou token sem o escopo monetário: tenta de novo sem receita
+            const errBody = await response.text();
+            this.logger.warn(`[Tier1] Analytics error (${response.status}), retrying without revenue: ${errBody}`);
+            metrics = baseMetrics;
+            response = await fetch(analyticsQuery(metrics), { headers: { Authorization: `Bearer ${token}` } });
+        }
 
         if (!response.ok) {
-            const errBody = await response.json().catch(() => ({}));
-            // 403 (Forbidden) ou 400 (Bad Request) geralmente indicam falta de permissão para revenue
-            if (response.status === 403 || response.status === 400) {
-                this.logger.warn(`[Tier1] Analytics error (${response.status}), retrying without revenue...`);
-                const fallbackMetrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,impressions,ctr,engagedViews,endScreenElementClickThroughRate';
-                const fallbackUrl = `${this.analyticsUrl}?ids=channel==${channelId}&startDate=2005-01-01&endDate=${today}&metrics=${fallbackMetrics}&dimensions=video&filters=video==${idsStr}`;
-                response = await fetch(fallbackUrl, { headers: { Authorization: `Bearer ${token}` } });
-                hasRevenue = false;
-            }
+            const errBody = await response.text();
+            throw new Error(`Analytics API (${response.status}): ${errBody}`);
         }
 
-        if (response.ok) {
-            const data = await response.json();
-            const rows = data.rows || [];
-            this.logger.log(`[Tier1] Health summary rows: ${rows.length} (hasRevenue: ${hasRevenue})`);
+        const data = await response.json();
+        const rows: any[][] = data.rows || [];
+        const hasRevenue = metrics.includes('estimatedRevenue');
+        this.logger.log(`[Tier1] Health summary rows: ${rows.length} (hasRevenue: ${hasRevenue})`);
 
-            for (const row of rows) {
-                let vid: string, vws: number, mins: number, rev: number = 0, avgD: number, avgP: number, subs: number, imp: number, ctr: number, engV: number, esc: number;
+        for (const row of rows) {
+            const vid: string = row[0];
+            if (!vid) continue;
+            const m: Record<string, number> = {};
+            metrics.forEach((name, i) => { m[name] = row[i + 1] || 0; });
 
-                if (hasRevenue) {
-                    [vid, vws, mins, rev, avgD, avgP, subs, imp, ctr, engV, esc] = row;
-                } else {
-                    [vid, vws, mins, avgD, avgP, subs, imp, ctr, engV, esc] = row;
-                }
-
-                if (!vid) continue; // Skip if no video ID in row
-
-                const existing = videoMap.get(vid) || { video_id: vid, channel_id: channelId };
-                videoMap.set(vid, {
-                    ...existing,
-                    analytics_views: vws || 0,
-                    estimated_minutes_watched: mins || 0,
-                    estimated_revenue: rev || 0,
-                    average_view_duration_seconds: avgD || 0,
-                    average_view_duration: avgD || 0,
-                    average_view_percentage: avgP || 0,
-                    subscribers_gained: subs || 0,
-                    impressions: imp || 0,
-                    click_through_rate: ctr || 0,
-                    engaged_views: engV || 0,
-                    end_screen_ctr: (esc || 0) * 100,
-                    last_updated: new Date().toISOString()
-                });
-            }
+            const existing = videoMap.get(vid) || { video_id: vid, channel_id: channelId };
+            videoMap.set(vid, {
+                ...existing,
+                analytics_views: m.views,
+                engaged_views: m.engagedViews,
+                estimated_minutes_watched: m.estimatedMinutesWatched,
+                average_view_duration_seconds: m.averageViewDuration,
+                average_view_duration: Math.round(m.averageViewDuration),
+                average_view_percentage: m.averageViewPercentage,
+                subscribers_gained: m.subscribersGained,
+                ...(hasRevenue ? { estimated_revenue: m.estimatedRevenue } : {}),
+                last_updated: new Date().toISOString()
+            });
         }
 
-        // Garantir que vídeos sem analytics ou metadata tenham defaults (evita NOT NULL errors)
+        // Vídeos novos sem linha de analytics ainda: defaults só para colunas NOT NULL
         for (const [vid, video] of videoMap.entries()) {
             videoMap.set(vid, {
                 title: video.title || 'Sem Título',
                 thumbnail_url: video.thumbnail_url || '',
-                analytics_views: 0,
-                estimated_minutes_watched: 0,
-                estimated_revenue: 0,
-                average_view_duration_seconds: 0,
-                average_view_percentage: 0,
-                subscribers_gained: 0,
-                impressions: 0,
-                click_through_rate: 0,
-                engaged_views: 0,
-                end_screen_ctr: 0,
                 ...video
             });
         }
 
         // Final Batch Upsert for yt_myvideos
-        const finalRows = Array.from(videoMap.values());
-        if (finalRows.length > 0) {
-            try {
-                const { error } = await this.supabase.from('yt_myvideos').upsert(finalRows, { onConflict: 'video_id' });
-                if (error) {
-                    this.logger.error(`[Tier1] Upsert Error: ${error.message}`);
-                    if (error.message.includes('estimated_revenue')) {
-                        this.logger.warn("Parece que a coluna estimated_revenue ainda não foi criada. Removendo métrica e tentando novamente...");
-                        const sanitized = finalRows.map(({ estimated_revenue, ...rest }: any) => rest);
-                        const { error: retryErr } = await this.supabase.from('yt_myvideos').upsert(sanitized, { onConflict: 'video_id' });
-                        if (retryErr) throw retryErr;
-                    } else {
-                        throw error;
-                    }
-                }
-            } catch (err: any) {
-                this.logger.error(`[Tier1] Final Batch Upsert failed: ${err.message}`);
-                // Não lançamos erro aqui para não travar a sincronização de outras partes
-                // mas logamos o erro para debug.
-            }
+        // Um upsert por conjunto de colunas: num upsert em lote o PostgREST grava NULL nas chaves
+        // ausentes, o que apagaria as métricas de quem veio só com metadados.
+        const groups = new Map<string, any[]>();
+        for (const row of videoMap.values()) {
+            const sig = Object.keys(row).sort().join(',');
+            if (!groups.has(sig)) groups.set(sig, []);
+            groups.get(sig)!.push(row);
+        }
+        for (const rows of groups.values()) {
+            const { error } = await this.supabase.from('yt_myvideos').upsert(rows, { onConflict: 'video_id' });
+            if (error) throw new Error(`Upsert yt_myvideos: ${error.message}`);
         }
 
         // B. Traffic Types Aggregate (Batch)

@@ -28,6 +28,8 @@
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
     "@supabase/supabase-js": "^2.87.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.4",
     "openai": "^6.10.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"

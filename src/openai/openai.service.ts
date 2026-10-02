@@ -210,7 +210,12 @@ export class OpenaiService {
                 throw new HttpException('No file URL provided', HttpStatus.BAD_REQUEST);
             }
 
-            console.log(`Downloading file from URL: ${fileUrl}`);
+            // Só baixa do nosso Storage — evita que o backend seja usado para buscar URLs arbitrárias.
+            const storageHost = new URL(process.env.SUPABASE_URL || '').host;
+            const target = new URL(fileUrl);
+            if (target.protocol !== 'https:' || target.host !== storageHost) {
+                throw new HttpException('URL de arquivo não permitida', HttpStatus.BAD_REQUEST);
+            }
 
             // Download file from Supabase Storage URL
             const response = await fetch(fileUrl);
@@ -238,6 +243,7 @@ export class OpenaiService {
             return transcription;
         } catch (error: any) {
             console.error("Error transcribing audio with OpenAI:", error);
+            if (error instanceof HttpException) throw error;
             // Throw the actual error message so the frontend can see it
             throw new HttpException(`Failed to transcribe audio: ${error.message || error}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }

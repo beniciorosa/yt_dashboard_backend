@@ -1,31 +1,27 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+
+const DEV_ORIGINS = ['http://localhost:3000', 'http://localhost:5173'];
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  console.log('DEBUG: SUPABASE_URL:', process.env.SUPABASE_URL);
-  console.log('DEBUG: ConfigService URL:', app.get(ConfigService).get('SUPABASE_URL'));
 
-  // Enable Global Prefix
   app.setGlobalPrefix('api');
 
-  // Enable CORS
+  // CORS_ORIGINS: lista separada por vírgula com os domínios do frontend (ex.: https://meu-app.vercel.app)
+  const origins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: '*', // Allow all origins for now to fix the issue
+    origin: [...origins, ...DEV_ORIGINS],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Accept, Authorization',
-    credentials: true,
   });
 
-  // Manual middleware to handle the Private Network Access preflight if needed
-  app.use((req, res, next) => {
-    if (req.headers['access-control-request-private-network']) {
-      res.setHeader('Access-Control-Allow-Private-Network', 'true');
-    }
-    next();
-  });
+  // DTOs com class-validator são validados; bodies sem DTO passam como antes.
+  app.useGlobalPipes(new ValidationPipe({ transform: true }));
 
   await app.listen(process.env.PORT ?? 8080);
 }
