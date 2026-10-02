@@ -23,6 +23,7 @@ const TOKEN_CACHE_MS = 60_000;
 @Injectable()
 export class AuthGuard implements CanActivate {
     private readonly cache = new Map<string, { userId: string; email?: string; exp: number }>();
+    private cronSecretCache: { value: string | null; exp: number } | null = null;
 
     constructor(
         private readonly reflector: Reflector,
@@ -36,7 +37,7 @@ export class AuthGuard implements CanActivate {
 
         const req = context.switchToHttp().getRequest();
 
-        if (this.reflector.getAllAndOverride<boolean>(CRON_ACCESS, targets) && this.hasCronSecret(req)) {
+        if (this.reflector.getAllAndOverride<boolean>(CRON_ACCESS, targets) && (await this.hasCronSecret(req))) {
             return true;
         }
 
@@ -60,10 +61,27 @@ export class AuthGuard implements CanActivate {
         return true;
     }
 
-    private hasCronSecret(req: any): boolean {
-        const expected = this.config.get<string>('CRON_SECRET');
+    /**
+     * O segredo do cron vive em app_secrets (só service_role lê): o pg_cron o envia no header
+     * e o backend o confere, sem precisar copiar o valor para as variáveis da Vercel.
+     * CRON_SECRET no ambiente, se existir, tem precedência (dev local).
+     */
+    private async cronSecret(): Promise<string | null> {
+        const fromEnv = this.config.get<string>('CRON_SECRET');
+        if (fromEnv) return fromEnv;
+        if (this.cronSecretCache && this.cronSecretCache.exp > Date.now()) return this.cronSecretCache.value;
+
+        const { data } = await this.supabase.from('app_secrets').select('value').eq('name', 'cron_secret').maybeSingle();
+        const value = data?.value || null;
+        this.cronSecretCache = { value, exp: Date.now() + 5 * 60_000 };
+        return value;
+    }
+
+    private async hasCronSecret(req: any): Promise<boolean> {
         const given = req.headers['x-cron-secret'];
-        if (!expected || typeof given !== 'string') return false;
+        if (typeof given !== 'string' || !given) return false;
+        const expected = await this.cronSecret();
+        if (!expected) return false;
         const a = Buffer.from(given);
         const b = Buffer.from(expected);
         return a.length === b.length && timingSafeEqual(a, b);

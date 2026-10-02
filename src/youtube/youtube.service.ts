@@ -614,9 +614,7 @@ export class YoutubeService {
             if (dbRows.length > 0) {
                 // Trava de Segurança: Só deletamos o histórico se recebemos dados novos para substituir
                 const vidsWithData = [...new Set(dbRows.map(r => r.video_id))];
-                for (const vid of vidsWithData) {
-                    await this.supabase.from('yt_video_traffic_details').delete().eq('video_id', vid).eq('source_detail', '');
-                }
+                await this.supabase.from('yt_video_traffic_details').delete().in('video_id', vidsWithData).eq('source_detail', '');
                 const { error } = await this.supabase.from('yt_video_traffic_details').insert(dbRows);
                 if (error) this.logger.error(`[Tier1] Insert error (Traffic): ${error.message}`);
             }

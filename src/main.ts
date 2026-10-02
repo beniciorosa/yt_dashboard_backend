@@ -2,20 +2,21 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
-const DEV_ORIGINS = ['http://localhost:3000', 'http://localhost:5173'];
+// Frontend de produção + dev local. Domínios extras (previews) entram por CORS_ORIGINS.
+const DEFAULT_ORIGINS = ['https://yt-dashboard-frontend.vercel.app', 'http://localhost:3000', 'http://localhost:5173'];
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api');
 
-  // CORS_ORIGINS: lista separada por vírgula com os domínios do frontend (ex.: https://meu-app.vercel.app)
+  // CORS_ORIGINS: lista separada por vírgula com domínios adicionais do frontend
   const origins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
   app.enableCors({
-    origin: [...origins, ...DEV_ORIGINS],
+    origin: [...origins, ...DEFAULT_ORIGINS],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Accept, Authorization',
   });
