@@ -36,7 +36,7 @@ export class AppController {
     // Os vídeos são processados do mais desatualizado para o mais recente, então o cron
     // converge para o canal inteiro mesmo com limite por execução.
     const maxVideos = limit ? Number(limit) : Number(process.env.SYNC_MAX_VIDEOS) || undefined;
-    const timeBudgetMs = budgetMs ? Number(budgetMs) : Number(process.env.SYNC_TIME_BUDGET_MS) || 50000;
+    const timeBudgetMs = budgetMs ? Number(budgetMs) : Number(process.env.SYNC_TIME_BUDGET_MS) || 40000;
 
     return await this.syncRuns.track(
       'my-videos',
