@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Query, Param, HttpException, HttpStatus } from '@nestjs/common';
 import { YoutubeService } from './youtube.service';
 import { SyncRunsService } from '../supabase/sync-runs.service';
 
@@ -68,6 +68,20 @@ export class YoutubeController {
         } catch (error: any) {
             // 409: o canal precisa ser reconectado (refresh_token ausente/revogado)
             throw new HttpException(error.message, HttpStatus.CONFLICT);
+        }
+    }
+
+    @Put('videos/:videoId/description')
+    async updateDescription(@Param('videoId') videoId: string, @Body() body: { description: string }) {
+        if (typeof body?.description !== 'string') {
+            throw new HttpException('description é obrigatório', HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return await this.youtubeService.updateVideoDescription(videoId, body.description);
+        } catch (error: any) {
+            const status = error.response?.status || HttpStatus.BAD_REQUEST;
+            const upstream = error.response?.data?.error?.message;
+            throw new HttpException(upstream || error.message, status);
         }
     }
 

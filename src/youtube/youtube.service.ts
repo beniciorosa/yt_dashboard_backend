@@ -200,6 +200,40 @@ export class YoutubeService {
         return channelId;
     }
 
+    /**
+     * Publica a descrição de um vídeo próprio. Lê o snippet atual e troca só a descrição:
+     * o videos.update substitui o snippet inteiro, então enviar apenas título+descrição
+     * apagaria tags e idioma. O banco só é atualizado depois que o YouTube confirma.
+     */
+    async updateVideoDescription(videoId: string, description: string) {
+        if (description.length > 5000) throw new Error(`A descrição tem ${description.length} caracteres; o limite do YouTube é 5.000.`);
+        if (/[<>]/.test(description)) throw new Error('O YouTube não aceita os caracteres < e > na descrição.');
+
+        const { data: video } = await this.supabase.from('yt_myvideos').select('channel_id').eq('video_id', videoId).maybeSingle();
+        if (!video?.channel_id) throw new Error(`Vídeo ${videoId} não está na base do canal.`);
+
+        const token = await this.refreshAccessToken(video.channel_id);
+        const current = await this.proxyAction(token, 'GET', 'videos', undefined, { part: 'snippet', id: videoId });
+        const snippet = current?.items?.[0]?.snippet;
+        if (!snippet) throw new Error(`Vídeo ${videoId} não encontrado no YouTube.`);
+
+        await this.proxyAction(token, 'PUT', 'videos', {
+            id: videoId,
+            snippet: {
+                title: snippet.title,
+                categoryId: snippet.categoryId,
+                description,
+                ...(snippet.tags ? { tags: snippet.tags } : {}),
+                ...(snippet.defaultLanguage ? { defaultLanguage: snippet.defaultLanguage } : {}),
+                ...(snippet.defaultAudioLanguage ? { defaultAudioLanguage: snippet.defaultAudioLanguage } : {}),
+            },
+        }, { part: 'snippet' });
+
+        const { error } = await this.supabase.from('yt_myvideos').update({ description }).eq('video_id', videoId);
+        if (error) this.logger.error(`Descrição publicada, mas falhou ao gravar em yt_myvideos (${videoId}): ${error.message}`);
+        return { success: true, videoId };
+    }
+
     /** Access token novo para o navegador, a partir do refresh_token guardado no servidor. */
     async issueAccessToken(channelId?: string) {
         let id = channelId;

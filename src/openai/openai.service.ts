@@ -106,7 +106,7 @@ export class OpenaiService {
       1. USE OS TIMESTAMPS EXATOS DO SRT. NÃO ARREDONDE. Se o SRT diz "04:12", use "04:12".
       2. O vídeo termina em ${lastTime}. NENHUM capítulo pode passar desse tempo.
       3. Crie capítulos baseados em RETENÇÃO: Identifique os momentos de "virada" ou "picos de interesse" no conteúdo.
-      4. Formato EXATO: "MM:SS – Título Magnético".
+      4. Formato EXATO: "MM:SS – Título Magnético" (depois de 1 hora de vídeo, "H:MM:SS – Título Magnético").
          - Títulos de capítulos devem gerar curiosidade (ex: "O Segredo de R$10k" em vez de "Faturamento").
       5. Mínimo 3 capítulos, Máximo 8 (dependendo da duração).
       
@@ -162,7 +162,11 @@ export class OpenaiService {
                     let part3 = timeMatch[3];
                     let text = timeMatch[4];
                     if (part3) {
-                        return `${part2.padStart(2, '0')}:${part3.padStart(2, '0')} – ${text}`;
+                        // HH:MM:SS — mantém a hora quando o vídeo passa de 60 min
+                        const hours = parseInt(part1);
+                        return hours > 0
+                            ? `${hours}:${part2.padStart(2, '0')}:${part3.padStart(2, '0')} – ${text}`
+                            : `${part2.padStart(2, '0')}:${part3.padStart(2, '0')} – ${text}`;
                     }
                     return `${part1.padStart(2, '0')}:${part2.padStart(2, '0')} – ${text}`;
                 }
@@ -173,9 +177,9 @@ export class OpenaiService {
             let lastSeconds = -100;
 
             formattedChapters.forEach(chapter => {
-                const timeMatch = chapter.match(/^(\d{2}):(\d{2})/);
+                const timeMatch = chapter.match(/^(?:(\d+):)?(\d{2}):(\d{2})/);
                 if (timeMatch) {
-                    const currentSeconds = parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]);
+                    const currentSeconds = parseInt(timeMatch[1] || '0') * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]);
                     if (currentSeconds === 0) {
                         cleanChapters.push(chapter);
                         lastSeconds = 0;
