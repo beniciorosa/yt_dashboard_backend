@@ -20,4 +20,4 @@ $settings = New-ScheduledTaskSettingsSet `
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 Write-Host "Tarefa '$TaskName' registrada: todo dia às $Time (ou assim que o PC ligar)."
 Write-Host "Testar agora:  Start-ScheduledTask -TaskName '$TaskName'"
-Write-Host "Log:           $env:LOCALAPPDATA\yt-dashboard\promotions-sync.log"
+Write-Host "Log:           $toolDir\.data\promotions-sync.log"

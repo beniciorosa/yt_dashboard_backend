@@ -18,8 +18,8 @@ npm run install-task          # agenda todo dia às 07:30
 
 ## Operação
 
-- Log: `%LOCALAPPDATA%\yt-dashboard\promotions-sync.log`.
+- Log: `tools\promotions-sync\.data\promotions-sync.log`.
 - O selo "Promoções" no cabeçalho do app mostra a última coleta; se falhar, o erro aparece no selo.
 - Se o Google pedir login de novo (sessão expirada), rode `npm run login` outra vez.
-- O perfil do Chrome fica em `%LOCALAPPDATA%\yt-dashboard\studio-profile`, separado do seu Chrome.
+- O perfil do Chrome fica em `tools\promotions-sync\.data\studio-profile`, separado do seu Chrome.
 - Para ver a coleta acontecendo: `HEADLESS=0` no `.env`.

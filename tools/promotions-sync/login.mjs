@@ -1,7 +1,9 @@
 // Passo único de configuração: abre o Chrome com o perfil da ferramenta para você entrar na
 // conta do canal. Feche a janela quando o Studio estiver aberto; o login fica salvo no perfil.
 import { chromium } from 'playwright';
-import { PROFILE_DIR, PROMOTIONS_URL, browserOptions } from './config.mjs';
+import { PROFILE_DIR, PROMOTIONS_URL, browserOptions, describeDirs } from './config.mjs';
+
+console.log(describeDirs());
 
 const context = await chromium.launchPersistentContext(PROFILE_DIR, browserOptions(false));
 const page = context.pages()[0] || (await context.newPage());

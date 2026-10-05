@@ -2,8 +2,9 @@
 // Mesma leitura do userscript antigo (scraper-promocoes.user.js), só que sem clique humano:
 // roda sozinho pelo Agendador de Tarefas do Windows num Chrome logado com o perfil da ferramenta.
 import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { chromium } from 'playwright';
-import { BACKEND_URL, CRON_SECRET, HEADLESS, LOG_FILE, PROFILE_DIR, PROMOTIONS_URL, browserOptions } from './config.mjs';
+import { BACKEND_URL, CRON_SECRET, DATA_DIR, HEADLESS, LOG_FILE, PROFILE_DIR, PROMOTIONS_URL, browserOptions, describeDirs } from './config.mjs';
 
 const dryRun = process.argv.includes('--dry-run');
 const log = (msg) => {
@@ -77,7 +78,8 @@ async function clickPager(page, selector) {
     for (let attempt = 0; attempt < 4; attempt++) {
         const beforeVideo = await page.evaluate(pageFns.firstVideoId);
         const beforeFrom = (await page.evaluate(pageFns.footer))?.from;
-        await page.click(selector);
+        // Clique via DOM (como o userscript fazia): diálogos/backdrops do Studio bloqueiam o clique de ponteiro.
+        await page.$eval(selector, (b) => b.click());
         for (let i = 0; i < 20; i++) {
             await sleep(400);
             const nowVideo = await page.evaluate(pageFns.firstVideoId);
@@ -126,19 +128,32 @@ async function send(rows) {
 }
 
 async function main() {
-    log(`início${dryRun ? ' (dry-run: nada é gravado)' : ''}`);
+    log(`início${dryRun ? ' (dry-run: nada é gravado)' : ''} | headless=${HEADLESS}`);
+    console.log(describeDirs());
     const context = await chromium.launchPersistentContext(PROFILE_DIR, browserOptions(HEADLESS));
+    let page;
     try {
-        const page = context.pages()[0] || (await context.newPage());
+        page = context.pages()[0] || (await context.newPage());
         await page.goto(PROMOTIONS_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Sem login o Studio manda para accounts.google.com: avisa em vez de ficar esperando.
+        const loginRedirect = page.waitForURL(/accounts\.google\.com/, { timeout: 60_000 }).then(
+            () => { throw new Error('O perfil do Chrome não está logado no Studio. Rode: npm run login'); },
+            () => undefined, // timeout da espera pelo redirect não é erro
+        );
+        // Se ainda assim o Studio mostrar "navegador incompatível", segue pelo link de pular.
+        const skip = page.getByText(/pular para o youtube studio/i);
+        await skip.waitFor({ timeout: 8_000 }).then(() => skip.click()).catch(() => undefined);
+
         await Promise.race([
-            page.waitForSelector('ytcp-promotion-row, ytcp-table-footer', { timeout: 60_000 }),
-            page.waitForURL(/accounts\.google\.com/, { timeout: 60_000 }).then(() => {
-                throw new Error('O perfil do Chrome não está logado no Studio. Rode: npm run login');
+            page.waitForSelector('ytcp-promotion-row, ytcp-table-footer', { timeout: 60_000 }).catch(() => {
+                throw new Error(`A tabela de Promoções não apareceu em 60 s (página atual: ${page.url()}). Veja a captura em ${join(DATA_DIR, 'last-error.png')} ou rode com HEADLESS=0.`);
             }),
+            loginRedirect,
         ]);
+
+        // Fecha qualquer diálogo aberto (dicas, avisos) que ficaria por cima da tabela.
+        await page.keyboard.press('Escape').catch(() => undefined);
 
         const rows = await collectAll(page);
         if (rows.length === 0) throw new Error('Nenhuma promoção encontrada na tela (layout mudou ou canal errado?)');
@@ -148,6 +163,10 @@ async function main() {
         const reply = await send(rows);
         log(`backend: ${reply.slice(0, 200)}`);
         log('fim: sucesso');
+    } catch (e) {
+        // captura da tela para diagnosticar o que o Studio mostrou (login, consentimento, layout novo)
+        if (page) await page.screenshot({ path: join(DATA_DIR, 'last-error.png'), fullPage: false }).catch(() => undefined);
+        throw e;
     } finally {
         await context.close();
     }
