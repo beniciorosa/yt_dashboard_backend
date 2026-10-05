@@ -33,6 +33,17 @@ export class HubspotController {
         );
     }
 
+    /** Preenche produtos (itens de linha) dos negócios já sincronizados; repetir até remaining = 0. */
+    @CronAccess()
+    @Get('backfill-products')
+    async backfillProducts(@Query('budgetMs') budgetMs?: string) {
+        return this.syncRuns.track(
+            'hubspot-products',
+            () => this.hubspot.backfillProducts(budgetMs ? Number(budgetMs) : undefined),
+            (summary) => (summary.remaining > 0 ? 'partial' : 'success'),
+        );
+    }
+
     @Get('status')
     async status() {
         return { configured: await this.hubspot.configured() };

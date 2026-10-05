@@ -141,7 +141,7 @@ export class HubspotService {
     }
 
     /** Nomes dos itens de linha de cada negócio do lote (2 requisições por página, qualquer tamanho). */
-    private async lineItemsByDeal(dealIds: string[]): Promise<Map<string, string>> {
+    private async lineItemsByDeal(dealIds: string[], strict = false): Promise<Map<string, string>> {
         const result = new Map<string, string>();
         if (dealIds.length === 0) return result;
         try {
@@ -170,9 +170,44 @@ export class HubspotService {
             }
         } catch (e: any) {
             // sem o escopo e-commerce (line items) o sync segue sem produtos, em vez de parar
+            if (strict) throw new Error(`Itens de linha indisponíveis (o token precisa do escopo e-commerce): ${e.message}`);
             this.logger.warn(`[HubSpot] itens de linha indisponíveis: ${e.message}`);
         }
         return result;
+    }
+
+    /**
+     * Preenche hs_deals.products para negócios sincronizados antes de os itens de linha existirem
+     * (ou cujo lote falhou). Ganhos recentes primeiro. '' marca "consultado, sem item", para não repetir.
+     */
+    async backfillProducts(timeBudgetMs = 45000) {
+        const startedAt = Date.now();
+        let updated = 0;
+        let remaining = 0;
+        while (Date.now() - startedAt < timeBudgetMs) {
+            const { data, error, count } = await this.supabase
+                .from('hs_deals')
+                .select('deal_id, closed_at', { count: 'exact' })
+                .is('products', null)
+                .order('closed_at', { ascending: false, nullsFirst: false })
+                .limit(100);
+            if (error) throw new Error(`hs_deals: ${error.message}`);
+            remaining = count || 0;
+            if (!data || data.length === 0) break;
+
+            const ids = data.map((d) => String(d.deal_id));
+            const products = await this.lineItemsByDeal(ids, true);
+            const rows = ids.map((id) => ({ deal_id: Number(id), products: products.get(id) || '' }));
+            for (const row of rows) {
+                const { error: upErr } = await this.supabase.from('hs_deals').update({ products: row.products }).eq('deal_id', row.deal_id);
+                if (upErr) throw new Error(`hs_deals update: ${upErr.message}`);
+            }
+            updated += rows.length;
+            remaining -= rows.length;
+        }
+        const summary = { updated, remaining: Math.max(0, remaining), durationMs: Date.now() - startedAt };
+        this.logger.log(`[HubSpot] backfill produtos ${JSON.stringify(summary)}`);
+        return summary;
     }
 
     /**
