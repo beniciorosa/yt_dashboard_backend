@@ -23,6 +23,20 @@ export interface SalesSummary {
   conversionRate: number;
 }
 
+// As datas de hubspot_negocios são "timestamp without time zone" com o horário de parede de Brasília.
+// Interpretá-las como UTC (new Date("2026-10-01 00:23:40")) deslocava 3 h e deixava negócios
+// fechados de madrugada no dia 1º fora do mês.
+const wallClock = (value: string | null | undefined): Date | null => {
+  if (!value) return null;
+  const s = String(value).trim();
+  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(s);
+  return new Date(hasZone ? s : `${s.replace(' ', 'T')}-03:00`);
+};
+
+/** Instante → texto no horário de parede de Brasília, para comparar com as colunas sem fuso no banco. */
+const wallString = (d: Date | null | undefined): string | undefined =>
+  d ? new Date(d.getTime() - 3 * 3600 * 1000).toISOString().replace('Z', '') : undefined;
+
 @Injectable()
 export class SalesService {
   private readonly logger = new Logger(SalesService.name);
@@ -64,8 +78,9 @@ export class SalesService {
     const utmChunkSize = 200;
     const fetchPromises: Promise<any[]>[] = [];
 
-    const startISO = start?.toISOString();
-    const endISO = end?.toISOString();
+    // filtros no banco em horário de parede de Brasília (as colunas não têm fuso)
+    const startISO = wallString(start);
+    const endISO = wallString(end);
 
     for (let i = 0; i < utmsToQuery.length; i += utmChunkSize) {
       const chunk = utmsToQuery.slice(i, i + utmChunkSize);
@@ -165,8 +180,8 @@ export class SalesService {
 
       // Filter logic:
       // Lead: count if data_criacao is within range
-      const creationDate = deal.data_criacao ? new Date(deal.data_criacao) : null;
-      const closingDate = deal.data_fechamento ? new Date(deal.data_fechamento) : null;
+      const creationDate = deal.data_criacao ? wallClock(deal.data_criacao) : null;
+      const closingDate = deal.data_fechamento ? wallClock(deal.data_fechamento) : null;
 
       const inCreationRange = isAllPeriod || (creationDate && end && creationDate >= start! && creationDate <= end);
       const inClosingRange = isAllPeriod || (closingDate && end && closingDate >= start! && closingDate <= end);
@@ -366,8 +381,8 @@ export class SalesService {
 
     // Filter deals in memory to match ranking logic
     const filteredDeals = deals.filter(deal => {
-      const creationDate = deal.data_criacao ? new Date(deal.data_criacao) : null;
-      const closingDate = deal.data_fechamento ? new Date(deal.data_fechamento) : null;
+      const creationDate = deal.data_criacao ? wallClock(deal.data_criacao) : null;
+      const closingDate = deal.data_fechamento ? wallClock(deal.data_fechamento) : null;
 
       const inCreationRange = isAllPeriod || (creationDate && end && creationDate >= start! && creationDate <= end);
       const inClosingRange = isAllPeriod || (closingDate && end && closingDate >= start! && closingDate <= end);
@@ -489,8 +504,8 @@ export class SalesService {
   }
   // Mesma semântica do ranking: lead conta se criado OU fechado no período; ganho/perdido só se FECHADO no período.
   private dealInPeriod(deal: any, start: Date | null, end: Date | null) {
-    const created = deal.data_criacao ? new Date(deal.data_criacao) : null;
-    const closed = deal.data_fechamento ? new Date(deal.data_fechamento) : null;
+    const created = deal.data_criacao ? wallClock(deal.data_criacao) : null;
+    const closed = deal.data_fechamento ? wallClock(deal.data_fechamento) : null;
     const isLead = this.inRange(created, start, end) || this.inRange(closed, start, end);
     const won = this.isWonEtapa(deal.etapa) && this.inRange(closed, start, end);
     const lost = this.isLostEtapa(deal.etapa) && this.inRange(closed, start, end);
@@ -548,7 +563,7 @@ export class SalesService {
   private async fetchAllDealsInRange(start: Date | null, end: Date | null) {
     const pageSize = 1000;
     let acc: any[] = [], page = 0, more = true;
-    const s = start?.toISOString(), e = end?.toISOString();
+    const s = wallString(start), e = wallString(end);
     while (more) {
       let q = this.supabase.from('hubspot_negocios').select('proprietario, valor, etapa, data_criacao, data_fechamento');
       if (s && e) {
@@ -610,8 +625,8 @@ export class SalesService {
     const tlB = new Map<string, { leads: number; revenue: number }>();
 
     const bumpTimeline = (m: Map<string, any>, deal: any, start: Date | null, end: Date | null) => {
-      const created = deal.data_criacao ? new Date(deal.data_criacao) : null;
-      const closed = deal.data_fechamento ? new Date(deal.data_fechamento) : null;
+      const created = deal.data_criacao ? wallClock(deal.data_criacao) : null;
+      const closed = deal.data_fechamento ? wallClock(deal.data_fechamento) : null;
       if (this.inRange(created, start, end) && created) {
         const d = created.toISOString().split('T')[0];
         if (!m.has(d)) m.set(d, { leads: 0, revenue: 0 });
@@ -629,8 +644,8 @@ export class SalesService {
       const videoId = utmToVideo.get(utm);
       if (!videoId) return;
 
-      const created = deal.data_criacao ? new Date(deal.data_criacao) : null;
-      const closed = deal.data_fechamento ? new Date(deal.data_fechamento) : null;
+      const created = deal.data_criacao ? wallClock(deal.data_criacao) : null;
+      const closed = deal.data_fechamento ? wallClock(deal.data_fechamento) : null;
       if (created && (!lastLead.has(videoId) || created > lastLead.get(videoId)!)) lastLead.set(videoId, created);
       if (this.isWonEtapa(deal.etapa) && closed && (!lastWon.has(videoId) || closed > lastWon.get(videoId)!)) lastWon.set(videoId, closed);
 

@@ -29,7 +29,8 @@ const pageFns = {
                 titulo: txt(r, '.promotion-cell-info'),
                 status: txt(r, '.tablecell-status'),
                 meta: txt(r, '.tablecell-goal'),
-                data_criacao: txt(r, '.tablecell-creation-date'),
+                // o Studio renomeou a coluna ("Data de criação" → "Data de início"); aceita as duas
+                data_criacao: txt(r, '.tablecell-start-date') || txt(r, '.tablecell-creation-date'),
                 custo: String(custo),
                 impressoes: String(parseIntBR(txt(r, '.tablecell-impressions'))),
                 visualizacoes: String(visualizacoes),
