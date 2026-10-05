@@ -55,7 +55,7 @@ export class HubspotService {
         const clean = token.trim();
         if (!/^pat-/.test(clean)) throw new Error('Isso não parece um token de Private App do HubSpot (começa com "pat-").');
         const res = await fetch(`${API}/crm/v3/owners?limit=1`, { headers: { Authorization: `Bearer ${clean}` } });
-        if (!res.ok) throw new Error(`O HubSpot recusou o token (${res.status}). Confira os escopos: crm.objects.deals.read, crm.objects.owners.read, crm.objects.contacts.read.`);
+        if (!res.ok) throw new Error(`O HubSpot recusou o token (${res.status}). Confira os escopos: crm.objects.deals.read, crm.objects.owners.read, crm.objects.contacts.read, e-commerce (itens de linha).`);
         const { error } = await this.supabase.from('app_secrets').upsert({ name: 'hubspot_token', value: clean });
         if (error) throw new Error(`app_secrets: ${error.message}`);
         this.tokenCache = null;
@@ -140,6 +140,41 @@ export class HubspotService {
         return rows;
     }
 
+    /** Nomes dos itens de linha de cada negócio do lote (2 requisições por página, qualquer tamanho). */
+    private async lineItemsByDeal(dealIds: string[]): Promise<Map<string, string>> {
+        const result = new Map<string, string>();
+        if (dealIds.length === 0) return result;
+        try {
+            const assoc = await this.request<any>('/crm/v4/associations/deals/line_items/batch/read', {
+                method: 'POST',
+                body: JSON.stringify({ inputs: dealIds.map((id) => ({ id })) }),
+            });
+            const itemToDeal = new Map<string, string>();
+            for (const r of assoc.results || []) {
+                for (const to of r.to || []) itemToDeal.set(String(to.toObjectId), String(r.from?.id));
+            }
+            if (itemToDeal.size === 0) return result;
+
+            const ids = [...itemToDeal.keys()];
+            for (let i = 0; i < ids.length; i += 100) {
+                const page = await this.request<any>('/crm/v3/objects/line_items/batch/read', {
+                    method: 'POST',
+                    body: JSON.stringify({ properties: ['name'], inputs: ids.slice(i, i + 100).map((id) => ({ id })) }),
+                });
+                for (const item of page.results || []) {
+                    const dealId = itemToDeal.get(String(item.id));
+                    const name = (item.properties?.name || '').trim();
+                    if (!dealId || !name) continue;
+                    result.set(dealId, result.has(dealId) ? `${result.get(dealId)};${name}` : name);
+                }
+            }
+        } catch (e: any) {
+            // sem o escopo e-commerce (line items) o sync segue sem produtos, em vez de parar
+            this.logger.warn(`[HubSpot] itens de linha indisponíveis: ${e.message}`);
+        }
+        return result;
+    }
+
     /**
      * Sync incremental dos negócios, do mais antigo modificado para o mais novo. É resumível:
      * o cursor (hs_lastmodifieddate) é salvo a cada página, então várias execuções curtas
@@ -186,10 +221,12 @@ export class HubspotService {
                 });
 
                 const results: any[] = page.results || [];
+                const products = await this.lineItemsByDeal(results.map((d) => String(d.id)));
                 const rows = results.map((d) => {
                     const p = d.properties || {};
                     return {
                         deal_id: Number(d.id),
+                        products: products.get(String(d.id)) || null,
                         name: p.dealname || null,
                         pipeline_id: p.pipeline || null,
                         stage_id: p.dealstage || null,
