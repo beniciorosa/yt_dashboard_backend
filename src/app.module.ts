@@ -14,6 +14,7 @@ import { CrossViewModule } from './cross-view/cross-view.module';
 import { SupabaseModule } from './supabase/supabase.module';
 import { AttributionModule } from './attribution/attribution.module';
 import { HubspotModule } from './hubspot/hubspot.module';
+import { PromotionsModule } from './promotions/promotions.module';
 import { AuthGuard } from './auth/auth.guard';
 
 @Module({
@@ -31,6 +32,7 @@ import { AuthGuard } from './auth/auth.guard';
     CrossViewModule,
     AttributionModule,
     HubspotModule,
+    PromotionsModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],

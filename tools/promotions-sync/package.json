@@ -1,0 +1,15 @@
+{
+  "name": "promotions-sync",
+  "private": true,
+  "type": "module",
+  "description": "Coleta diária das Promoções do YouTube Studio (sem API oficial) usando o Chrome instalado.",
+  "scripts": {
+    "login": "node login.mjs",
+    "sync": "node sync.mjs",
+    "dry-run": "node sync.mjs --dry-run",
+    "install-task": "powershell -ExecutionPolicy Bypass -File install-task.ps1"
+  },
+  "dependencies": {
+    "playwright": "^1.50.0"
+  }
+}

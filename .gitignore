@@ -58,3 +58,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .env*
 !.env.example
 *.txt
+tools/promotions-sync/.env
+tools/promotions-sync/node_modules/
