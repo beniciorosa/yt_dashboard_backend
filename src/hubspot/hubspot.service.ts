@@ -184,11 +184,15 @@ export class HubspotService {
         const startedAt = Date.now();
         let updated = 0;
         let remaining = 0;
-        while (Date.now() - startedAt < timeBudgetMs) {
+        // Só negócios ganhos: são os que entram em "vendas por produto" (os demais ficam para o sync normal).
+        const { data: wonStages } = await this.supabase.from('hs_stages').select('stage_id').eq('kind', 'won');
+        const wonIds = (wonStages || []).map((s) => s.stage_id);
+        while (Date.now() - startedAt < timeBudgetMs && wonIds.length) {
             const { data, error, count } = await this.supabase
                 .from('hs_deals')
                 .select('deal_id, closed_at', { count: 'exact' })
                 .is('products', null)
+                .in('stage_id', wonIds)
                 .order('closed_at', { ascending: false, nullsFirst: false })
                 .limit(100);
             if (error) throw new Error(`hs_deals: ${error.message}`);
