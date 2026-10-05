@@ -101,6 +101,13 @@ export class ClosersService {
         return { start, end, dimension, types, cells };
     }
 
+    /** Vendas e receita por produto no período (negócios ganhos, qualquer origem). */
+    async products(start: string, end: string) {
+        const { data, error } = await this.supabase.rpc('product_stats', { p_start: start, p_end: end });
+        if (error) throw new Error(`product_stats: ${error.message}`);
+        return (data || []).map((r: any) => ({ product: r.product as string, won: num(r.won), revenue: num(r.revenue) }));
+    }
+
     /** Últimas vendas (qualquer origem), para a lista do app móvel. */
     async recentWins(limit = 20) {
         const { data, error } = await this.supabase

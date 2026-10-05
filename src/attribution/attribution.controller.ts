@@ -61,6 +61,12 @@ export class ClosersController {
         return this.closers.matrix(range.start, range.end, parseDimension(dimension));
     }
 
+    @Get('products')
+    products(@Query('start') start?: string, @Query('end') end?: string) {
+        const range = parseRange(start, end);
+        return this.closers.products(range.start, range.end);
+    }
+
     @Get('recent-wins')
     recentWins(@Query('limit') limit?: string) {
         return this.closers.recentWins(limit ? Number(limit) : 20);
