@@ -94,7 +94,7 @@ export class SalesService {
         while (hasMore) {
           try {
             let query = this.supabase
-              .from('hubspot_negocios')
+              .from('v_negocios')
               .select('valor, etapa, utm_content, item_linha, data_fechamento, data_criacao')
               .in('utm_content', chunk);
 
@@ -372,7 +372,7 @@ export class SalesService {
 
     // 3. Fetch deals for these UTMs
     const { data: deals, error } = await this.supabase
-      .from('hubspot_negocios')
+      .from('v_negocios')
       .select('*')
       .in('utm_content', utms)
       .order('data_criacao', { ascending: false });
@@ -448,7 +448,7 @@ export class SalesService {
         let hasMore = true;
         while (hasMore) {
           const { data, error } = await this.supabase
-            .from('hubspot_negocios')
+            .from('v_negocios')
             .select('proprietario, valor, etapa')
             .in('utm_content', chunk)
             .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -545,7 +545,7 @@ export class SalesService {
         let acc: any[] = [], page = 0, more = true;
         while (more) {
           const { data, error } = await this.supabase
-            .from('hubspot_negocios')
+            .from('v_negocios')
             .select('proprietario, valor, etapa, utm_content, data_criacao, data_fechamento')
             .in('utm_content', chunk)
             .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -565,7 +565,7 @@ export class SalesService {
     let acc: any[] = [], page = 0, more = true;
     const s = wallString(start), e = wallString(end);
     while (more) {
-      let q = this.supabase.from('hubspot_negocios').select('proprietario, valor, etapa, data_criacao, data_fechamento');
+      let q = this.supabase.from('v_negocios').select('proprietario, valor, etapa, data_criacao, data_fechamento');
       if (s && e) {
         q = q.or(`and(data_criacao.gte.${s},data_criacao.lte.${e}),and(data_fechamento.gte.${s},data_fechamento.lte.${e})`);
       }

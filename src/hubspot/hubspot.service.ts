@@ -34,13 +34,44 @@ export class HubspotService {
         @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     ) { }
 
-    get configured(): boolean {
-        return !!this.config.get<string>('HUBSPOT_TOKEN');
+    private tokenCache: { value: string | null; exp: number } | null = null;
+
+    /** Token do Private App: variável de ambiente ou, de preferência, a tabela app_secrets (gravada pela UI). */
+    private async token(): Promise<string | null> {
+        const fromEnv = this.config.get<string>('HUBSPOT_TOKEN');
+        if (fromEnv) return fromEnv;
+        if (this.tokenCache && this.tokenCache.exp > Date.now()) return this.tokenCache.value;
+        const { data } = await this.supabase.from('app_secrets').select('value').eq('name', 'hubspot_token').maybeSingle();
+        this.tokenCache = { value: data?.value || null, exp: Date.now() + 5 * 60_000 };
+        return this.tokenCache.value;
+    }
+
+    async configured(): Promise<boolean> {
+        return !!(await this.token());
+    }
+
+    /** Valida o token contra o HubSpot antes de guardar; devolve o erro do HubSpot se não servir. */
+    async saveToken(token: string) {
+        const clean = token.trim();
+        if (!/^pat-/.test(clean)) throw new Error('Isso não parece um token de Private App do HubSpot (começa com "pat-").');
+        const res = await fetch(`${API}/crm/v3/owners?limit=1`, { headers: { Authorization: `Bearer ${clean}` } });
+        if (!res.ok) throw new Error(`O HubSpot recusou o token (${res.status}). Confira os escopos: crm.objects.deals.read, crm.objects.owners.read, crm.objects.contacts.read.`);
+        const { error } = await this.supabase.from('app_secrets').upsert({ name: 'hubspot_token', value: clean });
+        if (error) throw new Error(`app_secrets: ${error.message}`);
+        this.tokenCache = null;
+        return { configured: true };
+    }
+
+    async removeToken() {
+        const { error } = await this.supabase.from('app_secrets').delete().eq('name', 'hubspot_token');
+        if (error) throw new Error(error.message);
+        this.tokenCache = null;
+        return { configured: !!this.config.get<string>('HUBSPOT_TOKEN') };
     }
 
     private async request<T>(path: string, init: RequestInit = {}, attempt = 0): Promise<T> {
-        const token = this.config.get<string>('HUBSPOT_TOKEN');
-        if (!token) throw new Error('HUBSPOT_TOKEN não configurado no backend (Private App do HubSpot, somente leitura).');
+        const token = await this.token();
+        if (!token) throw new Error('HubSpot não conectado: cole o token do Private App na tela de Closers.');
 
         const wait = this.lastRequestAt + MIN_REQUEST_GAP_MS - Date.now();
         if (wait > 0) await sleep(wait);
