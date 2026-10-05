@@ -43,12 +43,14 @@ export class AuthService {
         return user;
     }
 
-    async createUser(adminToken: string, userData: { email: string; password?: string }) {
+    async createUser(adminToken: string, userData: { email: string; password?: string; role?: string }) {
         await this.verifyAdmin(adminToken);
+        if (!userData.password || userData.password.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.');
+        const role = ['admin', 'user', 'mobile'].includes(userData.role || '') ? userData.role! : 'user';
 
         const { data, error } = await this.supabaseAdmin.auth.admin.createUser({
             email: userData.email,
-            password: userData.password || 'Mudar@123',
+            password: userData.password,
             email_confirm: true
         });
 
@@ -57,7 +59,21 @@ export class AuthService {
             throw new Error(error.message);
         }
 
-        return { success: true, user: data.user };
+        // O trigger handle_new_user grava 'user'; aqui aplica o papel escolhido (ex.: 'mobile' = só o app de vendas).
+        const { error: roleError } = await this.supabaseAdmin
+            .from('user_roles')
+            .upsert({ id: data.user.id, email: userData.email, role });
+        if (roleError) this.logger.error(`Papel não aplicado para ${userData.email}: ${roleError.message}`);
+
+        return { success: true, user: data.user, role };
+    }
+
+    async setRole(adminToken: string, userId: string, role: string) {
+        await this.verifyAdmin(adminToken);
+        if (!['admin', 'user', 'mobile'].includes(role)) throw new Error('Papel inválido');
+        const { error } = await this.supabaseAdmin.from('user_roles').update({ role }).eq('id', userId);
+        if (error) throw new Error(error.message);
+        return { success: true };
     }
 
     async listUsers(adminToken: string) {
