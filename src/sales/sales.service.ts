@@ -23,19 +23,19 @@ export interface SalesSummary {
   conversionRate: number;
 }
 
-// As datas de hubspot_negocios são "timestamp without time zone" com o horário de parede de Brasília.
-// Interpretá-las como UTC (new Date("2026-10-01 00:23:40")) deslocava 3 h e deixava negócios
-// fechados de madrugada no dia 1º fora do mês.
+// As datas de hubspot_negocios são "timestamp without time zone" gravadas em UTC (confirmado
+// contra o HubSpot: closedate 2026-10-01T00:23:40Z aparece como "2026-10-01 00:23:40").
+// Sem fuso explícito, new Date() interpreta como UTC — que é o certo.
 const wallClock = (value: string | null | undefined): Date | null => {
   if (!value) return null;
   const s = String(value).trim();
   const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(s);
-  return new Date(hasZone ? s : `${s.replace(' ', 'T')}-03:00`);
+  return new Date(hasZone ? s : `${s.replace(' ', 'T')}Z`);
 };
 
-/** Instante → texto no horário de parede de Brasília, para comparar com as colunas sem fuso no banco. */
+/** Instante → texto UTC sem o "Z", para comparar com as colunas sem fuso no banco. */
 const wallString = (d: Date | null | undefined): string | undefined =>
-  d ? new Date(d.getTime() - 3 * 3600 * 1000).toISOString().replace('Z', '') : undefined;
+  d ? d.toISOString().replace('Z', '') : undefined;
 
 @Injectable()
 export class SalesService {
