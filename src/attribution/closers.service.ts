@@ -101,6 +101,27 @@ export class ClosersService {
         return { start, end, dimension, types, cells };
     }
 
+    /** Últimas vendas (qualquer origem), para a lista do app móvel. */
+    async recentWins(limit = 20) {
+        const { data, error } = await this.supabase
+            .from('v_deals')
+            .select('deal_id, name, owner_name, amount, closed_on, products, utm')
+            .eq('is_won', true)
+            .not('closed_on', 'is', null)
+            .order('closed_on', { ascending: false })
+            .limit(Math.min(Math.max(limit, 1), 100));
+        if (error) throw new Error(`v_deals: ${error.message}`);
+        return (data || []).map((d: any) => ({
+            dealId: Number(d.deal_id),
+            customer: d.name as string | null,
+            ownerName: (d.owner_name as string | null) || 'Sem proprietário',
+            amount: num(d.amount),
+            closedOn: d.closed_on as string,
+            products: String(d.products || '').split(';').map((p: string) => p.trim()).filter(Boolean),
+            source: /^yt-/.test(String(d.utm || '')) ? 'youtube' : d.utm ? 'outro' : null,
+        }));
+    }
+
     async setOwnerRole(ownerId: number, role: string | null) {
         if (role !== null && !['closer', 'sdr', 'outro'].includes(role)) throw new BadRequestException('Papel inválido');
         const { data, error } = await this.supabase

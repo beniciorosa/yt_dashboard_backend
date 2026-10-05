@@ -61,6 +61,11 @@ export class ClosersController {
         return this.closers.matrix(range.start, range.end, parseDimension(dimension));
     }
 
+    @Get('recent-wins')
+    recentWins(@Query('limit') limit?: string) {
+        return this.closers.recentWins(limit ? Number(limit) : 20);
+    }
+
     @Patch('owners/:id')
     setRole(@Param('id', ParseIntPipe) id: number, @Body() body: { role: string | null }) {
         return this.closers.setOwnerRole(id, body.role ?? null);
