@@ -81,12 +81,12 @@ export class HotmartService {
 
     /** Valida as credenciais pedindo um token e, se der certo, guarda em app_secrets. */
     async saveCredentials(input: { clientId: string; clientSecret: string; basic: string }) {
-        const creds = {
-            clientId: input.clientId.trim(),
-            clientSecret: input.clientSecret.trim(),
-            basic: input.basic.trim().replace(/^Basic\s+/i, ''),
-        };
-        if (!creds.clientId || !creds.clientSecret || !creds.basic) throw new Error('Informe Client ID, Client Secret e o token Basic.');
+        const clientId = input.clientId.trim();
+        const clientSecret = input.clientSecret.trim();
+        if (!clientId || !clientSecret) throw new Error('Informe o Client ID e o Client Secret.');
+        // O "Basic" da Hotmart é só base64("client_id:client_secret"); se não vier, calculamos.
+        const basic = input.basic.trim().replace(/^Basic\s+/i, '') || Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+        const creds = { clientId, clientSecret, basic };
         await this.fetchToken(creds);
         const { error } = await this.supabase.from('app_secrets').upsert([
             { name: 'hotmart_client_id', value: creds.clientId },
