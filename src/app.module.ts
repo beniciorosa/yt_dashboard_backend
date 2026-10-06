@@ -15,6 +15,7 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { AttributionModule } from './attribution/attribution.module';
 import { HubspotModule } from './hubspot/hubspot.module';
 import { PromotionsModule } from './promotions/promotions.module';
+import { HotmartModule } from './hotmart/hotmart.module';
 import { AuthGuard } from './auth/auth.guard';
 
 @Module({
@@ -33,6 +34,7 @@ import { AuthGuard } from './auth/auth.guard';
     AttributionModule,
     HubspotModule,
     PromotionsModule,
+    HotmartModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
